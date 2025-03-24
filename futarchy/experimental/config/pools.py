@@ -10,14 +10,14 @@ from .contracts import CONTRACT_ADDRESSES
 
 # Pool configurations with token slot information
 POOL_CONFIG_YES: Dict[str, Any] = {
-    "address": "0x9a14d28909f42823ee29847f87a15fb3b6e8aed3",
+    "address": CONTRACT_ADDRESSES["poolYes"],
     "tokenCompanySlot": 0,  # GNO YES is token0
     "fee": 3000,  # 0.3% fee tier
     "description": "GNO YES / sDAI YES pool"
 }
 
 POOL_CONFIG_NO: Dict[str, Any] = {
-    "address": "0x6E33153115Ab58dab0e0F1E3a2ccda6e67FA5cD7",
+    "address": CONTRACT_ADDRESSES["poolNo"],
     "tokenCompanySlot": 1,  # GNO NO is token1
     "fee": 3000,  # 0.3% fee tier
     "description": "GNO NO / sDAI NO pool"
