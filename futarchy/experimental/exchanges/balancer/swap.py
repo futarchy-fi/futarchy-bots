@@ -120,7 +120,8 @@ class BalancerSwapHandler:
                 'chainId': self.w3.eth.chain_id
             })
             
-            signed_approve_tx = self.account.sign_transaction(approve_tx)
+            # Standardize signing
+            signed_approve_tx = self.w3.eth.account.sign_transaction(approve_tx, self.account.key)
             tx_hash = self.w3.eth.send_raw_transaction(self._get_raw_transaction(signed_approve_tx))
             print(f"Approval tx sent: {tx_hash.hex()}")
             receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
@@ -148,7 +149,8 @@ class BalancerSwapHandler:
             'chainId': self.w3.eth.chain_id
         })
         
-        signed_approve_tx = self.account.sign_transaction(approve_tx)
+        # Standardize signing
+        signed_approve_tx = self.w3.eth.account.sign_transaction(approve_tx, self.account.key)
         tx_hash = self.w3.eth.send_raw_transaction(self._get_raw_transaction(signed_approve_tx))
         print(f"Permit2 approval tx sent: {tx_hash.hex()}")
         receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
@@ -227,7 +229,9 @@ class BalancerSwapHandler:
         
         # Wait for nonce to be ready
         time.sleep(2)
-        nonce = self.w3.eth.get_transaction_count(self.address)
+        # Fetch pending nonce explicitly
+        nonce = self.w3.eth.get_transaction_count(self.address, 'pending')
+        print(f"BalancerSwapHandler using nonce: {nonce}")
         
         # Set deadline (30 minutes)
         deadline = self.w3.eth.get_block('latest')['timestamp'] + 1800
@@ -246,7 +250,8 @@ class BalancerSwapHandler:
             'chainId': self.w3.eth.chain_id
         })
         
-        signed_swap_tx = self.account.sign_transaction(swap_tx)
+        # Standardize signing
+        signed_swap_tx = self.w3.eth.account.sign_transaction(swap_tx, self.account.key)
         tx_hash = self.w3.eth.send_raw_transaction(self._get_raw_transaction(signed_swap_tx))
         print(f"\nSwap transaction sent: {tx_hash.hex()}")
         
@@ -259,9 +264,18 @@ class BalancerSwapHandler:
         # Check final balances and calculate changes
         final_balance_in, final_balance_out = self._print_balances(token_in, token_out, "\nFinal ")
         
-        # Calculate precise balance changes
-        balance_in_change = float(self.w3.from_wei(final_balance_in - initial_balance_in, 'ether'))
-        balance_out_change = float(self.w3.from_wei(final_balance_out - initial_balance_out, 'ether'))
+        # Calculate precise balance changes safely
+        delta_in_wei = final_balance_in - initial_balance_in
+        delta_out_wei = final_balance_out - initial_balance_out
+        
+        try:
+            balance_in_change = float(self.w3.from_wei(abs(delta_in_wei), 'ether')) * (-1 if delta_in_wei < 0 else 1)
+            balance_out_change = float(self.w3.from_wei(abs(delta_out_wei), 'ether')) * (-1 if delta_out_wei < 0 else 1)
+        except ValueError as e:
+            # Handle potential ValueError if balance calculation fails, but swap succeeded
+            print(f"⚠️ Warning: Could not calculate precise balance change: {e}")
+            balance_in_change = 0 # Default to 0
+            balance_out_change = 0 # Default to 0
         
         print("\nBalance Changes:")
         print(f"  {token_in}: {balance_in_change:+.18f}")

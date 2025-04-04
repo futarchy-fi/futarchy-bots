@@ -597,45 +597,36 @@ def execute_arbitrage_sell_synthetic_gno(bot, sdai_amount):
     print(f"GNO Synthetic Price: {synthetic_price:.6f} sDAI")
     print(f"Price Difference: {((synthetic_price / spot_price) - 1) * 100:.2f}%")
     
-    # Step 1: Buy waGNO with sDAI using existing command implementation
+    # Step 1: Buy waGNO with sDAI
     print(f"\n🔹 Step 1: Buying waGNO with {sdai_amount} sDAI")
     
     # Buy waGNO with sDAI
-    # from exchanges.balancer.swap import BalancerSwapHandler # No longer needed here
-    try:
-        balancer = BalancerSwapHandler(bot)
-        result = balancer.swap_sdai_to_wagno(sdai_amount)
-        if not result or not result.get('success'):
-            print("❌ Failed to buy waGNO. Aborting arbitrage.")
-            return
-
-        # Get the waGNO amount from the result's balance changes
-        wagno_received = abs(result['balance_changes']['token_out'])
-        
-        if wagno_received <= 0:
-            print("❌ No waGNO received. Aborting arbitrage.")
-            return
-            
-        print(f"✅ Successfully bought {wagno_received:.6f} waGNO")
-    except Exception as e:
-        # Suppress the specific error about value range
-        if "value must be between 1 and 2**256 - 1" not in str(e):
-            print(f"❌ Error during waGNO purchase: {e}")
-            return
-        else:
-            # The swap was actually successful, so we can continue
-            # Get the amount by checking balance changes
-            updated_balances = bot.get_balances()
-            current_wagno = float(updated_balances['wagno']['wallet'])
-            wagno_received = current_wagno - initial_wagno
-            
-            if wagno_received <= 0:
-                print("❌ No waGNO received. Aborting arbitrage.")
-                return
-            
-            print(f"✅ Successfully bought {wagno_received:.6f} waGNO")
+    balancer = BalancerSwapHandler(bot)
+    result = balancer.swap_sdai_to_wagno(sdai_amount)
     
-    # Step 2: Unwrap waGNO to GNO using existing command implementation
+    # Check if the swap succeeded (result should always be returned now)
+    if not result or not result.get('success'):
+        print("❌ Failed to buy waGNO. Aborting arbitrage.")
+        return
+
+    # Get the waGNO amount from the result's balance changes
+    # Check if balance changes were calculable
+    if 'token_out' not in result.get('balance_changes', {}) or result['balance_changes']['token_out'] == 0:
+        # If calculation failed or was zero, get balance manually
+        print("⚠️ Could not get waGNO received from swap result, checking balance manually.")
+        updated_balances = bot.get_balances()
+        current_wagno = float(updated_balances['wagno']['wallet'])
+        wagno_received = current_wagno - initial_wagno
+    else:
+        wagno_received = abs(result['balance_changes']['token_out'])
+
+    if wagno_received <= 0:
+        print("❌ No waGNO received. Aborting arbitrage.")
+        return
+        
+    print(f"✅ Successfully bought {wagno_received:.6f} waGNO")
+    
+    # Step 2: Unwrap waGNO to GNO
     print(f"\n🔹 Step 2: Unwrapping waGNO to GNO")
     
     # Get the current balance after buying waGNO
@@ -665,7 +656,7 @@ def execute_arbitrage_sell_synthetic_gno(bot, sdai_amount):
     
     print(f"✅ Received {gno_amount:.6f} GNO after unwrapping")
     
-    # Step 3: Split GNO into YES/NO tokens using existing command implementation
+    # Step 3: Split GNO into YES/NO tokens
     print(f"\n🔹 Step 3: Splitting GNO into YES/NO tokens")
     
     # Get current GNO balance to split
@@ -704,7 +695,7 @@ def execute_arbitrage_sell_synthetic_gno(bot, sdai_amount):
     print(f"✅ Received {gno_yes_amount:.6f} GNO-YES and {gno_no_amount:.6f} GNO-NO tokens")
     print(f"📊 Total available: {total_gno_yes:.6f} GNO-YES and {total_gno_no:.6f} GNO-NO tokens")
     
-    # Step 4: Sell GNO-YES for sDAI-YES using existing swap_gno_yes_to_sdai_yes command
+    # Step 4: Sell GNO-YES for sDAI-YES
     print(f"\n🔹 Step 4: Selling {total_gno_yes:.6f} GNO-YES for sDAI-YES")
     
     # Get current sDAI-YES balance before swap
@@ -744,7 +735,7 @@ def execute_arbitrage_sell_synthetic_gno(bot, sdai_amount):
         print(f"❌ Error selling GNO-YES: {e}")
         print("⚠️ Continuing with arbitrage despite GNO-YES selling error")
     
-    # Step 5: Sell GNO-NO for sDAI-NO using existing swap_gno_no command
+    # Step 5: Sell GNO-NO for sDAI-NO
     print(f"\n🔹 Step 5: Selling {total_gno_no:.6f} GNO-NO for sDAI-NO")
     
     # Get current sDAI-NO balance before swap

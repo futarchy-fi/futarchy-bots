@@ -1,9 +1,11 @@
 web3==6.20.4
 python-dotenv==1.0.0
 requests==2.32.3
-urllib3==2.3.0
+urllib3==2.2.3
 pyOpenSSL==25.0.0
 cryptography==44.0.2
 eth-account==0.11.3
 eth-typing==4.4.0
 eth-utils==4.1.1
+futarchy @ git+https://github.com/futarchy-fi/futarchy-terminal.git@futarchy-terminal-revised
+python-dotenv==1.0.0 
