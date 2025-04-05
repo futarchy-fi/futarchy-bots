@@ -3,10 +3,15 @@ import sys
 
 # Import Controllers and View
 from .view import View
-from futarchy.experimental.controllers.token_management_controller import TokenManagementController
-# from futarchy.experimental.controllers.trading_controller import TradingController # Add later
-# from futarchy.experimental.controllers.arbitrage_controller import ArbitrageController # Add later
-# from futarchy.experimental.controllers.strategy_controller import StrategyController # Add later
+from ..controllers.token_management_controller import TokenManagementController
+from ..controllers.trading_controller import TradingController
+# from ..controllers.arbitrage_controller import ArbitrageController # Add later
+# from ..controllers.strategy_controller import StrategyController # Add later
+# Import Models (needed for controller instantiation)
+from ..models.market_data_model import MarketDataModel
+from ..models.swap_model import SwapModel
+from ..models.conditional_token_model import ConditionalTokenModel
+from ..models.gno_wrapper_model import GnoWrapperModel
 
 
 class Router:
@@ -27,6 +32,13 @@ class Router:
         # --- Balances Command ---
         balances_parser = subparsers.add_parser('balances', help='Show token balances')
         balances_parser.add_argument('--address', type=str, help='(Optional) Check balances for a specific address') # Example optional arg
+
+        # --- Buy/Sell GNO Commands ---
+        buy_gno_parser = subparsers.add_parser('buy_gno', help='Buy GNO using sDAI (swaps sDAI->waGNO, unwraps waGNO->GNO)')
+        buy_gno_parser.add_argument('amount', type=float, help='Amount of sDAI to spend')
+
+        sell_gno_parser = subparsers.add_parser('sell_gno', help='Sell GNO for sDAI (wraps GNO->waGNO, swaps waGNO->sDAI)')
+        sell_gno_parser.add_argument('amount', type=float, help='Amount of GNO to sell')
 
         # --- Add other commands here later ---
         # Example:
@@ -49,9 +61,15 @@ class Router:
             verbose_flag = getattr(bot_context, 'verbose', False) # Access from bot if set there
             view = View(verbose=verbose_flag)
 
-            # Instantiate Controllers (pass bot context and view)
-            token_controller = TokenManagementController(bot_context, view)
-            # trading_controller = TradingController(bot_context, view) # Add later
+            # Instantiate Models needed by controllers
+            market_data_model = MarketDataModel(bot_context)
+            swap_model = SwapModel(bot_context)
+            conditional_token_model = ConditionalTokenModel(bot_context)
+            gno_wrapper_model = GnoWrapperModel(bot_context)
+
+            # Instantiate Controllers (pass bot context, view, and models)
+            token_controller = TokenManagementController(bot_context, view, market_data_model, gno_wrapper_model, conditional_token_model)
+            trading_controller = TradingController(bot_context, view, swap_model, gno_wrapper_model)
             # arb_controller = ArbitrageController(bot_context, view) # Add later
             # strategy_controller = StrategyController(bot_context, view) # Add later
 
@@ -63,6 +81,10 @@ class Router:
                     bot_context.address = bot_context.w3.to_checksum_address(args.address)
                     view.display_message(f"Checking balances for specified address: {bot_context.address}")
                 token_controller.show_balances()
+            elif args.command == 'buy_gno':
+                trading_controller.buy_gno(args.amount)
+            elif args.command == 'sell_gno':
+                trading_controller.sell_gno(args.amount)
             # elif args.command == 'prices':
             #     strategy_controller.show_prices()
             # elif args.command == 'wrap_gno':
@@ -81,3 +103,5 @@ class Router:
                 view.display_error(f"An unexpected error occurred: {e}")
             else:
                 print(f"❌ An unexpected error occurred during setup: {e}")
+            import traceback
+            traceback.print_exc()

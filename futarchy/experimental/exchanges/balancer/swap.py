@@ -108,7 +108,13 @@ class BalancerSwapHandler:
         ).call()
         
         if permit2_allowance < amount:
-            print(f"Approving {token_contract.functions.symbol().call()} for Permit2...")
+            # Try to get symbol, fallback to address
+            try:
+                token_symbol = token_contract.functions.symbol().call()
+            except Exception:
+                token_symbol = token # Use address if symbol() fails
+            
+            print(f"Approving {token_symbol} for Permit2...")
             approve_tx = token_contract.functions.approve(
                 CONTRACT_ADDRESSES["permit2"],
                 2**256 - 1  # Max approval
