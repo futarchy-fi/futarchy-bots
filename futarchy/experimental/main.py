@@ -70,14 +70,14 @@ import math
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Futarchy Trading Bot (Refactored)')
-
+    
     # General options
     parser.add_argument('--rpc', type=str, help='RPC URL for Gnosis Chain')
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose output')
-
+    
     # Command mode
     subparsers = parser.add_subparsers(dest='command', help='Command to run')
-
+    
     # Interactive mode (default)
     interactive_parser = subparsers.add_parser('interactive', help='Run in interactive mode')
 
@@ -160,7 +160,7 @@ def parse_args():
     debug_parser = subparsers.add_parser('debug', help='Run in debug mode with additional output')
     test_swaps_parser = subparsers.add_parser('test_swaps', help='Test all swap functions with small amounts')
     test_swaps_parser.add_argument('--amount', type=float, default=0.001, help='Amount to use for testing (default: 0.001)')
-
+    
     return parser.parse_args()
 
 # --- Main Function ---
@@ -170,7 +170,7 @@ def main():
 
     # Load environment variables from .env file
     load_dotenv()
-
+    
     # --- Initialization ---
     try:
         bot = FutarchyBot(rpc_url=args.rpc, verbose=args.verbose)
@@ -439,7 +439,7 @@ def main():
         print(f"\n\u274c An error occurred: {e}")
         traceback.print_exc()
         sys.exit(1)
-
+    
 
 # --- Refactored Arbitrage Functions ---
 
@@ -724,7 +724,7 @@ def execute_arbitrage_buy_synthetic_gno(bot, sdai_amount, swap_manager, token_ma
     if not token_manager.split('sDAI', sdai_amount):
         print("❌ Failed to split sDAI. Aborting.")
         return
-
+    
     # Step 4 & 5: Balance sDAI-YES/NO by selling the cheaper one
     print("\n\U0001f539 Step 4 & 5: Balancing sDAI-YES/NO...")
     balances_after_split = bot.get_balances()

@@ -94,15 +94,7 @@ class FutarchyBot(BaseBot):
         )
     
     def get_balances(self, address=None):
-        """
-        Get all token balances for an address.
-        
-        Args:
-            address: Address to check (defaults to self.address)
-            
-        Returns:
-            dict: Token balances with exact values (not rounded)
-        """
+        print("WARNING: Called legacy get_balances in FutarchyBot")
         if address is None:
             if self.address is None:
                 raise ValueError("No address provided")
@@ -139,13 +131,7 @@ class FutarchyBot(BaseBot):
         return balances
     
     def print_balances(self, balances=None):
-        """
-        Print balances in a formatted way with floor rounding to 6 decimal places.
-        This ensures that displayed values can be safely used as input amounts.
-        
-        Args:
-            balances: Balance dict (will fetch if None)
-        """
+        print("WARNING: Called legacy print_balances in FutarchyBot")
         if balances is None:
             balances = self.get_balances()
         
