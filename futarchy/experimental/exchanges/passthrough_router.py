@@ -93,7 +93,7 @@ class PassthroughRouter:
             })
 
             signed_tx = self.w3.eth.account.sign_transaction(authorize_tx, private_key=self.account.key)
-            tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+            tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
             print(f"⏳ Pool authorization tx sent: {tx_hash.hex()}")
             
             receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
@@ -137,7 +137,7 @@ class PassthroughRouter:
             })
 
             signed_tx = self.w3.eth.account.sign_transaction(approve_tx, private_key=self.account.key)
-            tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+            tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
             print(f"⏳ Approval tx sent: {tx_hash.hex()}")
             
             receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
@@ -230,7 +230,7 @@ class PassthroughRouter:
             })
 
             signed_tx = self.w3.eth.account.sign_transaction(swap_tx, private_key=self.account.key)
-            tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+            tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
             print(f"⏳ Swap transaction sent: {tx_hash.hex()}")
             
             receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
