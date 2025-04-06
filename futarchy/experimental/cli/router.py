@@ -36,9 +36,11 @@ class Router:
         # --- Buy/Sell GNO Commands ---
         buy_gno_parser = subparsers.add_parser('buy_gno', help='Buy GNO using sDAI (swaps sDAI->waGNO, unwraps waGNO->GNO)')
         buy_gno_parser.add_argument('amount', type=float, help='Amount of sDAI to spend')
+        buy_gno_parser.add_argument('--simulate', action='store_true', help='Simulate the buy operation without executing')
 
         sell_gno_parser = subparsers.add_parser('sell_gno', help='Sell GNO for sDAI (wraps GNO->waGNO, swaps waGNO->sDAI)')
         sell_gno_parser.add_argument('amount', type=float, help='Amount of GNO to sell')
+        sell_gno_parser.add_argument('--simulate', action='store_true', help='Simulate the sell operation without executing')
 
         # --- Add other commands here later ---
         # Example:
@@ -82,9 +84,9 @@ class Router:
                     view.display_message(f"Checking balances for specified address: {bot_context.address}")
                 token_controller.show_balances()
             elif args.command == 'buy_gno':
-                trading_controller.buy_gno(args.amount)
+                trading_controller.buy_gno(args.amount, simulate=args.simulate)
             elif args.command == 'sell_gno':
-                trading_controller.sell_gno(args.amount)
+                trading_controller.sell_gno(args.amount, simulate=args.simulate)
             # elif args.command == 'prices':
             #     strategy_controller.show_prices()
             # elif args.command == 'wrap_gno':

@@ -24,41 +24,36 @@ class SwapModel:
         self.balancer_handler = BalancerSwapHandler(bot_context)
         # self.passthrough_router = PassthroughRouter(...) # Instantiate if needed
 
-    def swap_on_balancer(self, token_in_symbol: str, token_out_symbol: str, amount: float) -> Optional[Dict]:
+    def swap_on_balancer(self, token_in_symbol: str, token_out_symbol: str, amount: float, simulate: bool = False) -> Optional[Dict]:
         """
-        Executes a swap on the Balancer sDAI/waGNO pool.
+        Executes or simulates a swap on the Balancer sDAI/waGNO pool.
 
         Args:
             token_in_symbol: 'sDAI' or 'waGNO'.
             token_out_symbol: 'sDAI' or 'waGNO'.
             amount: Amount of token_in to swap (in ether units).
+            simulate: If True, simulate the swap.
 
         Returns:
-            Dictionary with swap result {'success': bool, 'amount_out': float, 'tx_hash': str} or None on failure.
+            Dictionary with swap result or simulation result.
         """
         try:
+            # Determine which handler method to call
             if token_in_symbol == 'sDAI' and token_out_symbol == 'waGNO':
-                result = self.balancer_handler.swap_sdai_to_wagno(amount)
+                result = self.balancer_handler.swap_sdai_to_wagno(amount, simulate=simulate)
             elif token_in_symbol == 'waGNO' and token_out_symbol == 'sDAI':
-                result = self.balancer_handler.swap_wagno_to_sdai(amount)
+                result = self.balancer_handler.swap_wagno_to_sdai(amount, simulate=simulate)
             else:
                 print(f"❌ Unsupported Balancer swap: {token_in_symbol} -> {token_out_symbol}")
-                return None
+                return {'success': False, 'error': 'Unsupported swap pair', 'type': 'simulation' if simulate else 'execution'}
 
-            # Assume the handler returns a dict like {'success': True, 'tx_hash': '0x...', 'balance_changes': {'token_in': -X, 'token_out': Y}}
-            if result and result.get('success'):
-                return {
-                    'success': True,
-                    'amount_out': abs(result.get('balance_changes', {}).get('token_out', 0.0)), # Get the positive change in output token
-                    'tx_hash': result.get('tx_hash')
-                }
-            else:
-                return {'success': False, 'message': f"Balancer swap failed.", 'tx_hash': result.get('tx_hash')}
+            # Handler methods now return structured dicts for both modes
+            return result
 
         except Exception as e:
             print(f"❌ Error during Balancer swap in model: {e}")
             traceback.print_exc()
-            return {'success': False, 'message': str(e)}
+            return {'success': False, 'message': str(e), 'type': 'simulation' if simulate else 'execution'}
 
     # Add other swap methods (e.g., swap_passthrough) here later if needed
     # def buy_sdai_yes(self, amount: float) -> Optional[Dict]: ...

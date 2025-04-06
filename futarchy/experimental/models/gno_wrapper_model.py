@@ -18,31 +18,42 @@ class GnoWrapperModel:
         # Assuming FutarchyBot initializes AaveBalancerHandler as self.aave_balancer
         self.handler = bot_context.aave_balancer
 
-    def wrap_gno(self, amount: float) -> Optional[Dict]:
+    def wrap_gno(self, amount: float, simulate: bool = False) -> Optional[Dict]:
         """Wraps GNO into waGNO."""
         try:
-            tx_hash = self.handler.wrap_gno_to_wagno(amount)
-            if tx_hash:
-                # TODO: Ideally, parse the receipt to get the exact amount wrapped if the ratio isn't 1:1
-                # For now, assume 1:1 for simplicity in the controller
-                return {'success': True, 'amount_wrapped': amount, 'tx_hash': tx_hash}
+            # Pass simulate flag to handler
+            result = self.handler.wrap_gno_to_wagno(amount, simulate=simulate)
+            
+            if simulate:
+                return result # Handler already returns dict in simulation mode
             else:
-                return {'success': False, 'message': "Wrap transaction failed or returned no hash."}
+                # Existing execution logic (handler returns tx_hash)
+                tx_hash = result
+                if tx_hash:
+                    return {'success': True, 'amount_wrapped': amount, 'tx_hash': tx_hash, 'type': 'execution'}
+                else:
+                    return {'success': False, 'message': "Wrap transaction failed or returned no hash.", 'type': 'execution'}
         except Exception as e:
             print(f"❌ Error during GNO wrap in model: {e}")
             traceback.print_exc()
-            return {'success': False, 'message': str(e)}
+            return {'success': False, 'message': str(e), 'type': 'simulation' if simulate else 'execution'}
 
-    def unwrap_wagno(self, amount: float) -> Optional[Dict]:
+    def unwrap_wagno(self, amount: float, simulate: bool = False) -> Optional[Dict]:
         """Unwraps waGNO into GNO."""
         try:
-            tx_hash = self.handler.unwrap_wagno(amount) # Uses alias in handler
-            if tx_hash:
-                # TODO: Parse receipt for exact amount unwrapped
-                return {'success': True, 'amount_unwrapped': amount, 'tx_hash': tx_hash}
+            # Pass simulate flag to handler
+            result = self.handler.unwrap_wagno(amount, simulate=simulate) # Uses alias in handler
+            
+            if simulate:
+                return result # Handler already returns dict in simulation mode
             else:
-                return {'success': False, 'message': "Unwrap transaction failed or returned no hash."}
+                # Existing execution logic (handler returns tx_hash)
+                tx_hash = result
+                if tx_hash:
+                    return {'success': True, 'amount_unwrapped': amount, 'tx_hash': tx_hash, 'type': 'execution'}
+                else:
+                    return {'success': False, 'message': "Unwrap transaction failed or returned no hash.", 'type': 'execution'}
         except Exception as e:
             print(f"❌ Error during waGNO unwrap in model: {e}")
             traceback.print_exc()
-            return {'success': False, 'message': str(e)} 
+            return {'success': False, 'message': str(e), 'type': 'simulation' if simulate else 'execution'} 

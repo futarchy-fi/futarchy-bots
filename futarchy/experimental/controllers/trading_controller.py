@@ -48,89 +48,144 @@ class TradingController:
             self.view.display_error(f"Error checking balance: {e}")
             return False
 
-    def buy_gno(self, sdai_amount: float):
+    def buy_gno(self, sdai_amount: float, simulate: bool = False):
         """Buys GNO using sDAI (sDAI -> waGNO -> GNO)."""
-        self.view.display_message(f"\nAttempting to buy GNO using {sdai_amount} sDAI...")
+        if simulate:
+            self.view.display_message(f"\n🔄 SIMULATING buy GNO using {sdai_amount:.6f} sDAI...")
+        else:
+            self.view.display_message(f"\nAttempting to buy GNO using {sdai_amount} sDAI...")
 
         # 1. Check sDAI balance
         if not self._check_balance('sDAI', sdai_amount):
             return
 
-        # 2. Swap sDAI for waGNO
-        self.view.display_message(f"Step 1/2: Swapping {sdai_amount} sDAI for waGNO on Balancer...")
-        swap_result = self.swap_model.swap_on_balancer('sDAI', 'waGNO', sdai_amount)
+        # 2. Simulate/Execute Swap sDAI for waGNO
+        step1_msg = f"Step 1/2: Swapping {sdai_amount} sDAI for waGNO on Balancer..."
+        self.view.display_message(step1_msg if not simulate else f"🔄 SIMULATING {step1_msg}")
+        swap_result = self.swap_model.swap_on_balancer('sDAI', 'waGNO', sdai_amount, simulate=simulate)
 
         if not swap_result or not swap_result.get('success'):
-            self.view.display_error(f"Swap failed: {swap_result.get('message', 'Unknown error')}")
+            error_msg = swap_result.get('message') or swap_result.get('error', 'Unknown error')
+            self.view.display_error(f"Swap {'simulation' if simulate else ''} failed: {error_msg}")
             return
         
-        wagno_received = swap_result.get('amount_out', 0.0)
-        tx_hash_swap = swap_result.get('tx_hash')
-        self.view.display_message(f"✅ Swap successful! Received approx {wagno_received:.6f} waGNO. Tx: {tx_hash_swap}")
+        # Process simulation result for step 1
+        if simulate:
+            sim_amount_wei = swap_result.get('simulated_amount_out_wei', 0)
+            sim_amount = self.bot.w3.from_wei(sim_amount_wei, 'ether')
+            price = swap_result.get('estimated_price', 0)
+            self.view.display_message(f"   - Simulation Result: Would receive ~{sim_amount:.6f} waGNO")
+            self.view.display_message(f"   - Estimated Price: ~{price:.6f} sDAI per waGNO")
+            wagno_received = float(sim_amount) # Use simulated amount for next step simulation
+        else:
+            # Execution result processing
+            wagno_received = swap_result.get('balance_changes', {}).get('token_out', 0.0)
+            tx_hash_swap = swap_result.get('tx_hash')
+            self.view.display_message(f"✅ Swap successful! Received approx {wagno_received:.6f} waGNO. Tx: {tx_hash_swap}")
 
         if wagno_received <= 0:
-            self.view.display_error("Received zero waGNO from swap, cannot proceed with unwrap.")
+            self.view.display_error(f"Received zero waGNO from swap{'' if not simulate else ' simulation'}, cannot proceed.")
             return
 
-        # 3. Unwrap waGNO to GNO
-        self.view.display_message(f"Step 2/2: Unwrapping {wagno_received:.6f} waGNO to GNO...")
-        unwrap_result = self.gno_wrapper_model.unwrap_wagno(wagno_received)
+        # 3. Simulate/Execute Unwrap waGNO to GNO
+        step2_msg = f"Step 2/2: Unwrapping {wagno_received:.6f} waGNO to GNO..."
+        self.view.display_message(step2_msg if not simulate else f"🔄 SIMULATING {step2_msg}")
+        unwrap_result = self.gno_wrapper_model.unwrap_wagno(wagno_received, simulate=simulate)
 
         if not unwrap_result or not unwrap_result.get('success'):
-            self.view.display_error(f"Unwrap failed: {unwrap_result.get('message', 'Unknown error')}")
-            # Note: The swap already happened, user has waGNO
-            self.view.display_message("Swap succeeded, but unwrap failed. You should have waGNO balance.")
+            error_msg = unwrap_result.get('message') or unwrap_result.get('error', 'Unknown error')
+            self.view.display_error(f"Unwrap {'simulation' if simulate else ''} failed: {error_msg}")
+            if not simulate: # Only show this message on execution failure
+                self.view.display_message("Swap succeeded, but unwrap failed. You should have waGNO balance.")
+            return
+        
+        # Process simulation result for step 2
+        if simulate:
+            sim_amount = unwrap_result.get('simulated_amount_out', 0)
+            self.view.display_message(f"   - Simulation Result: Would receive ~{sim_amount:.6f} GNO")
+            self.view.display_message("\n✅ Buy GNO simulation completed.")
+            # No balance display needed for simulation
+            return
         else:
-            gno_received = unwrap_result.get('amount_unwrapped', 0.0)
+            # Execution result processing
+            gno_received = unwrap_result.get('amount_unwrapped', 0.0) # Model assumes 1:1 for now
             tx_hash_unwrap = unwrap_result.get('tx_hash')
             self.view.display_message(f"✅ Unwrap successful! Received approx {gno_received:.6f} GNO. Tx: {tx_hash_unwrap}")
             self.view.display_message("\n🎉 Buy GNO operation completed.")
 
-        # 4. Display final balances
+        # 4. Display final balances (only on execution)
         self.view.display_message("\nFetching final balances...")
         balances = self.market_data_model.get_all_balances()
         self.view.display_balances(balances)
 
 
-    def sell_gno(self, gno_amount: float):
+    def sell_gno(self, gno_amount: float, simulate: bool = False):
         """Sells GNO for sDAI (GNO -> waGNO -> sDAI)."""
-        self.view.display_message(f"\nAttempting to sell {gno_amount} GNO for sDAI...")
+        if simulate:
+            self.view.display_message(f"\n🔄 SIMULATING sell {gno_amount:.6f} GNO for sDAI...")
+        else:
+            self.view.display_message(f"\nAttempting to sell {gno_amount} GNO for sDAI...")
 
         # 1. Check GNO balance
         if not self._check_balance('GNO', gno_amount):
             return
 
-        # 2. Wrap GNO to waGNO
-        self.view.display_message(f"Step 1/2: Wrapping {gno_amount} GNO to waGNO...")
-        wrap_result = self.gno_wrapper_model.wrap_gno(gno_amount)
+        # 2. Simulate/Execute Wrap GNO to waGNO
+        step1_msg = f"Step 1/2: Wrapping {gno_amount} GNO to waGNO..."
+        self.view.display_message(step1_msg if not simulate else f"🔄 SIMULATING {step1_msg}")
+        wrap_result = self.gno_wrapper_model.wrap_gno(gno_amount, simulate=simulate)
 
         if not wrap_result or not wrap_result.get('success'):
-            self.view.display_error(f"Wrap failed: {wrap_result.get('message', 'Unknown error')}")
+            error_msg = wrap_result.get('message') or wrap_result.get('error', 'Unknown error')
+            self.view.display_error(f"Wrap {'simulation' if simulate else ''} failed: {error_msg}")
             return
 
-        wagno_wrapped = wrap_result.get('amount_wrapped', 0.0)
-        tx_hash_wrap = wrap_result.get('tx_hash')
-        self.view.display_message(f"✅ Wrap successful! Received approx {wagno_wrapped:.6f} waGNO. Tx: {tx_hash_wrap}")
+        # Process simulation result for step 1
+        if simulate:
+            # Use input GNO amount directly as wrapped amount due to simulation limitations
+            sim_amount = wrap_result.get('simulated_amount_out', gno_amount) # Use gno_amount as fallback
+            self.view.display_message(f"   - Simulation Result: Assumed ~{sim_amount:.6f} waGNO (due to simulation limitations)")
+            wagno_wrapped = float(sim_amount)
+        else:
+            # Execution result processing
+            wagno_wrapped = wrap_result.get('amount_wrapped', 0.0)
+            tx_hash_wrap = wrap_result.get('tx_hash')
+            self.view.display_message(f"✅ Wrap successful! Received approx {wagno_wrapped:.6f} waGNO. Tx: {tx_hash_wrap}")
 
         if wagno_wrapped <= 0:
-            self.view.display_error("Received zero waGNO from wrap, cannot proceed with swap.")
+            self.view.display_error(f"Received zero waGNO from wrap{'' if not simulate else ' simulation'}, cannot proceed.")
             return
 
-        # 3. Swap waGNO for sDAI
-        self.view.display_message(f"Step 2/2: Swapping {wagno_wrapped:.6f} waGNO for sDAI on Balancer...")
-        swap_result = self.swap_model.swap_on_balancer('waGNO', 'sDAI', wagno_wrapped)
+        # 3. Simulate/Execute Swap waGNO for sDAI
+        step2_msg = f"Step 2/2: Swapping {wagno_wrapped:.6f} waGNO for sDAI on Balancer..."
+        self.view.display_message(step2_msg if not simulate else f"🔄 SIMULATING {step2_msg}")
+        swap_result = self.swap_model.swap_on_balancer('waGNO', 'sDAI', wagno_wrapped, simulate=simulate)
 
         if not swap_result or not swap_result.get('success'):
-            self.view.display_error(f"Swap failed: {swap_result.get('message', 'Unknown error')}")
-            # Note: The wrap already happened, user has waGNO
-            self.view.display_message("Wrap succeeded, but swap failed. You should have waGNO balance.")
+            error_msg = swap_result.get('message') or swap_result.get('error', 'Unknown error')
+            self.view.display_error(f"Swap {'simulation' if simulate else ''} failed: {error_msg}")
+            if not simulate: # Only show this message on execution failure
+                self.view.display_message("Wrap succeeded, but swap failed. You should have waGNO balance.")
+            return
+            
+        # Process simulation result for step 2
+        if simulate:
+            sim_amount_wei = swap_result.get('simulated_amount_out_wei', 0)
+            sim_amount = self.bot.w3.from_wei(sim_amount_wei, 'ether')
+            price = swap_result.get('estimated_price', 0)
+            self.view.display_message(f"   - Simulation Result: Would receive ~{sim_amount:.6f} sDAI")
+            self.view.display_message(f"   - Estimated Price: ~{price:.6f} waGNO per sDAI") # Price is waGNO/sDAI here
+            self.view.display_message("\n✅ Sell GNO simulation completed.")
+            # No balance display needed for simulation
+            return
         else:
-            sdai_received = swap_result.get('amount_out', 0.0)
+            # Execution result processing
+            sdai_received = swap_result.get('balance_changes', {}).get('token_out', 0.0)
             tx_hash_swap = swap_result.get('tx_hash')
             self.view.display_message(f"✅ Swap successful! Received approx {sdai_received:.6f} sDAI. Tx: {tx_hash_swap}")
             self.view.display_message("\n🎉 Sell GNO operation completed.")
 
-        # 4. Display final balances
+        # 4. Display final balances (only on execution)
         self.view.display_message("\nFetching final balances...")
         balances = self.market_data_model.get_all_balances()
         self.view.display_balances(balances)
