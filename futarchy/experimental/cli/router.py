@@ -42,6 +42,26 @@ class Router:
         sell_gno_parser.add_argument('amount', type=float, help='Amount of GNO to sell')
         sell_gno_parser.add_argument('--simulate', action='store_true', help='Simulate the sell operation without executing')
 
+        # --- Conditional Token SWAP Commands --- (Renamed)
+        buy_gno_yes_parser = subparsers.add_parser('buy_gno_yes', help='Buy GNO-YES using sDAI-YES (via YES pool swap)')
+        buy_gno_yes_parser.add_argument('amount', type=float, help='Amount of sDAI-YES to spend') # Input amount is sDAI-YES
+        buy_gno_yes_parser.add_argument('--simulate', action='store_true', help='Simulate the buy operation')
+
+        sell_gno_yes_parser = subparsers.add_parser('sell_gno_yes', help='Sell GNO-YES for sDAI-YES (via YES pool swap)')
+        sell_gno_yes_parser.add_argument('amount', type=float, help='Amount of GNO-YES to sell') # Input amount is GNO-YES
+        sell_gno_yes_parser.add_argument('--simulate', action='store_true', help='Simulate the sell operation')
+        
+        # --- Conditional Token SPLIT/MERGE Commands --- (As before)
+        split_parser = subparsers.add_parser('split_conditional', help='Split base token (sDAI/GNO) into YES/NO pair')
+        split_parser.add_argument('base_token', choices=['sDAI', 'GNO'], help='The base token to split')
+        split_parser.add_argument('amount', type=float, help='Amount of base token to split')
+        split_parser.add_argument('--simulate', action='store_true', help='Simulate the split operation')
+
+        merge_parser = subparsers.add_parser('merge_conditional', help='Merge YES/NO pair back into base token (sDAI/GNO)')
+        merge_parser.add_argument('base_token', choices=['sDAI', 'GNO'], help='The base token to merge back into')
+        merge_parser.add_argument('amount', type=float, help='Amount of YES/NO tokens to merge')
+        merge_parser.add_argument('--simulate', action='store_true', help='Simulate the merge operation')
+
         # --- Add other commands here later ---
         # Example:
         # prices_parser = subparsers.add_parser('prices', help='Show market prices')
@@ -71,7 +91,7 @@ class Router:
 
             # Instantiate Controllers (pass bot context, view, and models)
             token_controller = TokenManagementController(bot_context, view, market_data_model, gno_wrapper_model, conditional_token_model)
-            trading_controller = TradingController(bot_context, view, swap_model, gno_wrapper_model)
+            trading_controller = TradingController(bot_context, view, swap_model, gno_wrapper_model, conditional_token_model)
             # arb_controller = ArbitrageController(bot_context, view) # Add later
             # strategy_controller = StrategyController(bot_context, view) # Add later
 
@@ -87,6 +107,16 @@ class Router:
                 trading_controller.buy_gno(args.amount, simulate=args.simulate)
             elif args.command == 'sell_gno':
                 trading_controller.sell_gno(args.amount, simulate=args.simulate)
+            elif args.command == 'buy_gno_yes':
+                # Swap sDAI-YES -> GNO-YES
+                trading_controller.buy_conditional_via_swap(input_token='sDAI-YES', output_token='GNO-YES', amount=args.amount, simulate=args.simulate)
+            elif args.command == 'sell_gno_yes':
+                 # Swap GNO-YES -> sDAI-YES
+                trading_controller.sell_conditional_via_swap(input_token='GNO-YES', output_token='sDAI-YES', amount=args.amount, simulate=args.simulate)
+            elif args.command == 'split_conditional':
+                trading_controller.split_conditional_token(base_token=args.base_token, amount=args.amount, simulate=args.simulate)
+            elif args.command == 'merge_conditional':
+                trading_controller.merge_conditional_token(base_token=args.base_token, amount=args.amount, simulate=args.simulate)
             # elif args.command == 'prices':
             #     strategy_controller.show_prices()
             # elif args.command == 'wrap_gno':

@@ -26,7 +26,9 @@ from futarchy.experimental.utils.web3_utils import get_raw_transaction
 from futarchy.experimental.exchanges.cowswap import CowSwapExchange
 from futarchy.experimental.core.base_bot import BaseBot
 from futarchy.experimental.exchanges.aave_balancer import AaveBalancerHandler
-from futarchy.experimental.exchanges.sushiswap import SushiSwapExchange
+from futarchy.experimental.exchanges.balancer.swap import BalancerSwapHandler
+from futarchy.experimental.exchanges.sushiswap.swap import SushiSwapV3Handler
+from futarchy.experimental.models.conditional_token_model import ConditionalTokenModel
 
 class FutarchyBot(BaseBot):
     """Main Futarchy Trading Bot implementation"""
@@ -890,7 +892,7 @@ class FutarchyBot(BaseBot):
         zero_for_one = token_in.lower() == token0.lower()
         
         # Execute swap using SushiSwap
-        sushiswap = SushiSwapExchange(self)
+        sushiswap = SushiSwapV3Handler(self)
         return sushiswap.swap(pool_address, token_in, token_out, amount, zero_for_one)
     
     def add_liquidity_v3(self, pool_address, token0_amount, token1_amount, price_range_percentage=10, slippage_percentage=0.5):
@@ -907,7 +909,7 @@ class FutarchyBot(BaseBot):
         Returns:
             dict: Information about the created position or None if failed
         """
-        sushiswap = SushiSwapExchange(self)
+        sushiswap = SushiSwapV3Handler(self)
         return sushiswap.add_liquidity(pool_address, token0_amount, token1_amount, price_range_percentage, slippage_percentage)
     
     def increase_liquidity_v3(self, token_id, token0_amount, token1_amount, slippage_percentage=0.5):
@@ -923,7 +925,7 @@ class FutarchyBot(BaseBot):
         Returns:
             bool: Success or failure
         """
-        sushiswap = SushiSwapExchange(self)
+        sushiswap = SushiSwapV3Handler(self)
         return sushiswap.increase_liquidity(token_id, token0_amount, token1_amount, slippage_percentage)
     
     def decrease_liquidity_v3(self, token_id, liquidity_percentage, slippage_percentage=0.5):
@@ -938,7 +940,7 @@ class FutarchyBot(BaseBot):
         Returns:
             dict: Amounts of token0 and token1 received, or None if failed
         """
-        sushiswap = SushiSwapExchange(self)
+        sushiswap = SushiSwapV3Handler(self)
         return sushiswap.decrease_liquidity(token_id, liquidity_percentage, slippage_percentage)
     
     def collect_fees_v3(self, token_id):
@@ -951,7 +953,7 @@ class FutarchyBot(BaseBot):
         Returns:
             dict: Amounts of token0 and token1 collected, or None if failed
         """
-        sushiswap = SushiSwapExchange(self)
+        sushiswap = SushiSwapV3Handler(self)
         return sushiswap.collect_fees(token_id)
     
     def get_position_info_v3(self, token_id):
@@ -964,7 +966,7 @@ class FutarchyBot(BaseBot):
         Returns:
             dict: Position information
         """
-        sushiswap = SushiSwapExchange(self)
+        sushiswap = SushiSwapV3Handler(self)
         return sushiswap.get_position_info(token_id)
     
     def add_liquidity_to_yes_pool(self, gno_amount, sdai_amount, price_range_percentage=10, slippage_percentage=0.5):
@@ -1397,3 +1399,22 @@ class FutarchyBot(BaseBot):
         print("===== END OF SIGNING TESTS =====\n")
         
         return test_libraries
+
+    def _initialize_handlers(self):
+        """Initialize blockchain interaction handlers."""
+        if self.verbose:
+            print("Initializing handlers...")
+            
+        self.aave_balancer = AaveBalancerHandler(self)
+        self.balancer_swap = BalancerSwapHandler(self)
+        self.sushi_swap = SushiSwapV3Handler(self)
+        # self.conditional_tokens = ConditionalTokenHandler(self) # <-- Keep this commented for now
+        # We don't need a handler instance if the model logic is simple
+        
+        if self.verbose:
+            print("✅ Handlers initialized.")
+
+    def _initialize_strategies(self):
+        """Initialize trading strategies."""
+        pass # Add strategy initializations here later
+        # self.arb_strategy = ArbitrageStrategy(self) # Example
