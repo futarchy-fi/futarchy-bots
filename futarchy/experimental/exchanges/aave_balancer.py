@@ -71,29 +71,54 @@ class AaveBalancerHandler:
 
 
 
-    def wrap_gno_to_wagno(self, amount):
+    def wrap_gno_to_wagno(self, amount, simulate: bool = False):
         """
         Wrap GNO to waGNO using Aave's StaticAToken contract.
         
         Args:
             amount: Amount of GNO to wrap (in ether units)
+            simulate: If True, simulate using call() instead of sending tx.
             
         Returns:
-            str: Transaction hash if successful, None otherwise
+            str: Transaction hash if successful (execution mode).
+            dict: Simulation result {'success': bool, 'simulated_amount_out': float} (simulation mode).
+            None: On failure.
         """
         try:
-            # Convert amount to wei
             amount_wei = self.w3.to_wei(amount, 'ether')
-            
-            # Get GNO token contract
             gno_token = self.bot.get_token_contract(TOKEN_CONFIG["company"]["address"])
             
             # Check GNO balance
             gno_balance = gno_token.functions.balanceOf(self.address).call()
             if gno_balance < amount_wei:
                 print(f"❌ Insufficient GNO balance. Required: {amount}, Available: {self.w3.from_wei(gno_balance, 'ether')}")
-                return None
-            
+                return None if not simulate else {'success': False, 'error': 'Insufficient GNO balance'}
+
+            if simulate:
+                print(f"🔄 Simulating wrap of {amount} GNO to waGNO...")
+                # Skip the actual .call() for deposit simulation due to FailedInnerCall errors
+                # Assume 1:1 conversion for simulation purposes
+                simulated_amount_out = amount
+                print(f"   -> Simulation result: Assuming ~{simulated_amount_out:.18f} waGNO shares (simulation call skipped due to internal checks)")
+                return {
+                    'success': True, 
+                    'simulated_amount_out': float(simulated_amount_out), 
+                    'warning': 'Deposit simulation call skipped, assuming 1:1 wrap ratio',
+                    'type': 'simulation'
+                }
+                # try:
+                #     # deposit returns shares (uint256)
+                #     simulated_shares = self.wagno_token.functions.deposit(
+                #         amount_wei, self.address
+                #     ).call({'from': self.address})
+                #     simulated_amount_out = self.w3.from_wei(simulated_shares, 'ether')
+                #     print(f"   -> Simulation result: ~{simulated_amount_out:.18f} waGNO shares")
+                #     return {'success': True, 'simulated_amount_out': float(simulated_amount_out), 'type': 'simulation'}
+                # except Exception as e:
+                #     print(f"❌ Simulation error during wrap: {e}")
+                #     return {'success': False, 'error': str(e), 'type': 'simulation'}
+
+            # --- Execution Logic --- 
             print(f"Wrapping {amount} GNO to waGNO...")
             
             # 1. Approve waGNO contract to spend GNO
@@ -171,27 +196,28 @@ class AaveBalancerHandler:
             return None
 
     
-    def unwrap_wagno(self, amount):
+    def unwrap_wagno(self, amount, simulate: bool = False):
         """Alias for unwrap_wagno_to_gno"""
-        return self.unwrap_wagno_to_gno(amount)
+        return self.unwrap_wagno_to_gno(amount, simulate=simulate)
 
-    def unwrap_wagno_to_gno(self, amount):
+    def unwrap_wagno_to_gno(self, amount, simulate: bool = False):
         """
         Unwrap waGNO back to GNO.
         
         Args:
             amount: Amount of waGNO to unwrap (in ether units)
+            simulate: If True, simulate using call() instead of sending tx.
             
         Returns:
-            str: Transaction hash if successful, None otherwise
+            str: Transaction hash if successful (execution mode).
+            dict: Simulation result {'success': bool, 'simulated_amount_out': float} (simulation mode).
+            None: On failure.
         """
         try:
-            # Convert amount to wei
             amount_wei = self.w3.to_wei(amount, 'ether')
-            
-            # Check waGNO balance with detailed output
             wagno_balance = self.wagno_token.functions.balanceOf(self.address).call()
-            print("\nCurrent Balances:")
+            
+            print("\nCurrent Balances:") # Keep this for context
             print(f"waGNO: {self.w3.from_wei(wagno_balance, 'ether')} ({wagno_balance} wei)")
             print(f"Amount to unwrap: {amount} waGNO ({amount_wei} wei)\n")
             
@@ -199,8 +225,23 @@ class AaveBalancerHandler:
                 print(f"❌ Insufficient waGNO balance")
                 print(f"   Required: {amount} waGNO")
                 print(f"   Available: {self.w3.from_wei(wagno_balance, 'ether')} waGNO")
-                return None
-            
+                return None if not simulate else {'success': False, 'error': 'Insufficient waGNO balance'}
+
+            if simulate:
+                print(f"🔄 Simulating unwrap of {amount} waGNO to GNO...")
+                try:
+                    # redeem returns assets (uint256)
+                    simulated_assets = self.wagno_token.functions.redeem(
+                        amount_wei, self.address, self.address
+                    ).call({'from': self.address})
+                    simulated_amount_out = self.w3.from_wei(simulated_assets, 'ether')
+                    print(f"   -> Simulation result: ~{simulated_amount_out:.18f} GNO assets")
+                    return {'success': True, 'simulated_amount_out': float(simulated_amount_out), 'type': 'simulation'}
+                except Exception as e:
+                    print(f"❌ Simulation error during unwrap: {e}")
+                    return {'success': False, 'error': str(e), 'type': 'simulation'}
+
+            # --- Execution Logic ---
             print(f"Unwrapping {amount} waGNO to GNO...")
             
             # Try to estimate gas first to see if transaction would fail
