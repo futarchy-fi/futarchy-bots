@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 # Adjust these imports based on your project structure
 from ...exchanges.swapr.swap import SwaprV3Handler
+from ...services.tenderly_client import TenderlySimulationClient
 # Assume you have a way to load necessary config/constants
 from ...config.constants import (
     CONTRACT_ADDRESSES, 
@@ -38,6 +39,12 @@ if not GNO_YES_ADDRESS:
 
 # Removed SWAPR_* address loading as they are not used
 
+# --- Add Tenderly Credentials --- 
+TENDERLY_ACCESS_KEY = os.environ.get("TENDERLY_ACCESS_KEY")
+TENDERLY_ACCOUNT_SLUG = os.environ.get("TENDERLY_ACCOUNT_SLUG")
+TENDERLY_PROJECT_SLUG = os.environ.get("TENDERLY_PROJECT_SLUG")
+# --- End Tenderly Credentials --- 
+
 # --- Mock Bot Context ---
 # Simplified for simulation only
 class MockFutarchyBot:
@@ -68,6 +75,28 @@ def run_simulation_only_test():
     print("Initializing MockFutarchyBot (Simulation Mode)...") # Debug
     # Create mock bot context (no private key needed)
     mock_bot = MockFutarchyBot(w3, BOT_ADDRESS)
+
+    # --- Initialize and Attach Tenderly Client --- 
+    if all([TENDERLY_ACCESS_KEY, TENDERLY_ACCOUNT_SLUG, TENDERLY_PROJECT_SLUG]):
+        print("Initializing TenderlySimulationClient...")
+        try:
+            tenderly_client = TenderlySimulationClient(
+                access_key=TENDERLY_ACCESS_KEY,
+                account_slug=TENDERLY_ACCOUNT_SLUG,
+                project_slug=TENDERLY_PROJECT_SLUG,
+                web3_provider_url=RPC_URL # Use the same RPC URL for Tenderly's Web3 needs
+            )
+            mock_bot.tenderly_client = tenderly_client # Attach client to the bot
+            print("TenderlySimulationClient initialized and attached to mock_bot.")
+        except Exception as e:
+            print(f"❌ Error initializing TenderlySimulationClient: {e}")
+            # Decide if you want to exit or just warn
+            # return 
+    else:
+        print("⚠️ Tenderly credentials not fully set in environment. Skipping Tenderly client initialization.")
+        mock_bot.tenderly_client = None # Explicitly set to None
+    # --- End Tenderly Client Initialization --- 
+
     print("MockFutarchyBot initialized.") # Debug
 
     print("Initializing SwaprV3Handler...") # Debug
@@ -121,6 +150,14 @@ if __name__ == "__main__":
          print(f"❌ SDAI_YES_ADDRESS not found in environment.")
     elif not GNO_YES_ADDRESS:
          print(f"❌ GNO_YES_ADDRESS not found in environment.")
+    # --- Add Tenderly Env Var Checks ---
+    elif not TENDERLY_ACCESS_KEY:
+        print(f"❌ TENDERLY_ACCESS_KEY not found in environment.")
+    elif not TENDERLY_ACCOUNT_SLUG:
+        print(f"❌ TENDERLY_ACCOUNT_SLUG not found in environment.")
+    elif not TENDERLY_PROJECT_SLUG:
+        print(f"❌ TENDERLY_PROJECT_SLUG not found in environment.")
+    # --- End Tenderly Env Var Checks ---
     # Removed SWAPR_* address checks
     else:
         run_simulation_only_test() # Call the simulation-specific function 
