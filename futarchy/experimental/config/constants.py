@@ -108,5 +108,6 @@ __all__ = [
     'PERMIT2_ABI',
 
     # Swapr/Algebra
-    'SWAPR_ROUTER_ABI'
+    'SWAPR_ROUTER_ABI',
+    'ALGEBRA_POOL_ABI'
 ]
