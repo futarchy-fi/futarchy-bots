@@ -91,42 +91,66 @@ class TenderlySimulationClient:
             or web3 is unavailable.
         """
         if not self.w3:
-            print("Error: Web3 provider not available or not connected. Cannot encode input.")
             return None
         if not WEB3_AVAILABLE:
-             print("Error: web3.py library not installed. Cannot encode input.")
-             return None
-
-        print(f"[encode_input] Called for function: {function_name}") # DEBUG
-        print(f"[encode_input] Args: {args}") # DEBUG
-        print(f"[encode_input] Type of self.w3: {type(self.w3)}") # DEBUG
-        print(f"[encode_input] Is self.w3 connected: {self.w3.is_connected() if self.w3 else 'N/A'}") # DEBUG
+            return None
 
         try:
-            print("[encode_input] Trying to create temp contract...") # DEBUG
             temp_contract = self.w3.eth.contract(abi=abi)
-            print(f"[encode_input] Type of temp_contract: {type(temp_contract)}") # DEBUG
-
-            # --- Alternative Encoding --- 
-            print(f"[encode_input] Trying to get function '{function_name}' by name...") # DEBUG
             func_obj = temp_contract.get_function_by_name(function_name)
-            print(f"[encode_input] Type of func_obj: {type(func_obj)}") # DEBUG
-            print(f"[encode_input] Trying to call func_obj with args...") # DEBUG
-            # Build the transaction data using the function object
             encoded_data = func_obj(*args)._encode_transaction_data()
-            # --- End Alternative Encoding ---
-
-            # print(f"[encode_input] Trying to call temp_contract.encodeABI...") # DEBUG
-            # # Now encode the function call using this temporary instance
-            # encoded_data = temp_contract.encodeABI(fn_name=function_name, args=args)
-            print(f"[encode_input] Encoding successful: {encoded_data}") # DEBUG
             return encoded_data
         except Exception as e:
-            # Print the specific error during encoding for better debugging
-            print(f"Error encoding function '{function_name}' with args {args}: {e}")
-            # You might want to raise the exception here or log it more formally depending on your needs
-            # raise e
             return None
+
+    def encode_and_build_transaction(
+            self, 
+            network_id: str, 
+            from_address: str, 
+            to_address: str,
+            abi: List[Dict[str, Any]], 
+            function_name: str, 
+            args: List[Any],
+            gas: int = 8000000, 
+            value: str = "0", 
+            save: bool = False, 
+            save_if_fails: bool = False,
+            simulation_type: str = "full"
+        ) -> Optional[Dict[str, Any]]:
+        """
+        Convenience method that encodes a function call and builds a transaction in one step.
+
+        Args:
+            network_id: The target network ID (e.g., "1" for Mainnet, "100" for Gnosis).
+            from_address: The sender address.
+            to_address: The recipient address (contract or EOA).
+            abi: The contract ABI (list of dictionaries).
+            function_name: The name of the function to call.
+            args: A list of arguments for the function call.
+            gas: The gas limit for the transaction. Defaults to 8,000,000.
+            value: The native currency amount in Wei (string). Defaults to "0".
+            save: Whether to save the simulation to the Tenderly dashboard. Defaults to False.
+            save_if_fails: Save even if reverted (requires save=True). Defaults to False.
+            simulation_type: Simulation detail ("full", "quick", "abi"). Defaults to "full".
+
+        Returns:
+            A dictionary representing the transaction payload, or None if encoding fails.
+        """
+        input_data = self.encode_input(abi, function_name, args)
+        if not input_data:
+            return None
+            
+        return self.build_transaction(
+            network_id=network_id,
+            from_address=from_address,
+            to_address=to_address,
+            gas=gas,
+            value=value,
+            input_data=input_data,
+            save=save,
+            save_if_fails=save_if_fails,
+            simulation_type=simulation_type
+        )
 
     def build_transaction(self, network_id: str, from_address: str, to_address: str,
                           gas: int, value: str = "0", input_data: str = "0x",
@@ -189,14 +213,9 @@ class TenderlySimulationClient:
             request fails.
         """
         if not transactions:
-            print("Error: No transactions provided for simulation.")
             return None
 
         api_payload = {"simulations": transactions}
-
-        print(f"Sending simulation request for {len(transactions)} transactions to: {self.simulate_bundle_url}")
-        # Uncomment for deep debugging:
-        # print(f"Payload: {json.dumps(api_payload, indent=2)}")
 
         try:
             response = requests.post(
@@ -207,46 +226,20 @@ class TenderlySimulationClient:
             )
             response.raise_for_status() # Raises HTTPError for 4xx/5xx responses
 
-            print(f"API Response Status Code: {response.status_code}")
             simulation_results = response.json()
 
-            # Basic validation: Expecting a list in response containing simulation objects
-            # The API returns a dictionary like {"simulation_results": [...] }
+            # Handle different response formats
             if isinstance(simulation_results, dict) and 'simulation_results' in simulation_results:
-                 results_list = simulation_results['simulation_results']
-                 if isinstance(results_list, list):
-                     print(f"Successfully received results for {len(results_list)} simulations.")
-                     return results_list # Return the list of simulation results
-                 else:
-                     print(f"Error: Unexpected format for 'simulation_results'. Expected a list, got {type(results_list)}.")
-                     print(f"Response Body: {simulation_results}")
-                     return None
+                return simulation_results['simulation_results']
             elif isinstance(simulation_results, list):
-                 # Handle cases where the API might just return a list directly (less common based on docs)
-                 print(f"Successfully received results for {len(simulation_results)} simulations (direct list response).")
-                 return simulation_results
+                return simulation_results
             else:
-                 print(f"Error: Unexpected API response format. Expected a list, got {type(simulation_results)}.")
-                 print(f"Response Body: {simulation_results}")
-                 return None
+                return None
 
-
-        except requests.exceptions.Timeout:
-            print(f"Error: API request timed out after {timeout} seconds.")
-            return None
-        except requests.exceptions.HTTPError as e:
-            print(f"Error: HTTP Error {e.response.status_code} calling Tenderly API.")
-            try:
-                # Try to print the error response from Tenderly
-                print(f"Response Body: {e.response.json()}")
-            except json.JSONDecodeError:
-                print(f"Response Body: {e.response.text}")
-            return None
-        except requests.exceptions.RequestException as e:
-            print(f"Error: API Request failed: {e}")
-            return None
-        except Exception as e:
-            print(f"An unexpected error occurred during simulation: {e}")
+        except (requests.exceptions.Timeout, 
+                requests.exceptions.HTTPError, 
+                requests.exceptions.RequestException,
+                Exception):
             return None
 
 # --- Example Usage ---
