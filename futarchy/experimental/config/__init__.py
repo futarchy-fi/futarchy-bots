@@ -7,7 +7,8 @@ Please use with caution as functionality may change.
 
 from futarchy.experimental.config.network import (
     DEFAULT_RPC_URLS,
-    COWSWAP_API_URL
+    COWSWAP_API_URL,
+    CHAIN_ID
 )
 
 from futarchy.experimental.config.contracts import (
@@ -36,10 +37,17 @@ from futarchy.experimental.config.tokens import (
     get_base_token
 )
 
+# --- Add ABI imports ---
+from futarchy.experimental.config.abis import (
+    ERC20_ABI
+)
+# --- End ABI imports ---
+
 __all__ = [
     # Network
     'DEFAULT_RPC_URLS',
     'COWSWAP_API_URL',
+    'CHAIN_ID',
     
     # Contracts
     'CONTRACT_ADDRESSES',
@@ -62,5 +70,9 @@ __all__ = [
     'get_token_info',
     'get_token_decimals',
     'format_token_amount',
-    'get_base_token'
+    'get_base_token',
+
+    # --- Add ABIs to export ---
+    'ERC20_ABI'
+    # --- End ABIs to export ---
 ]

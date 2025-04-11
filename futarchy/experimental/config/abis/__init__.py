@@ -27,6 +27,9 @@ from .misc import (
     WAGNO_ABI,
     PERMIT2_ABI
 )
+from .swapr import (
+    SWAPR_ROUTER_ABI,
+)
 
 __all__ = [
     # ERC20
@@ -53,5 +56,8 @@ __all__ = [
     'WXDAI_ABI',
     'SDAI_DEPOSIT_ABI',
     'WAGNO_ABI',
-    'PERMIT2_ABI'
+    'PERMIT2_ABI',
+    
+    # Swapr/Algebra
+    'SWAPR_ROUTER_ABI',
 ] 

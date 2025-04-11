@@ -45,6 +45,9 @@ CONTRACT_ADDRESSES: Dict[str, str] = {
     "batchRouter": "0xe2fa4e1d17725e72dcdAfe943Ecf45dF4B9E285b",
     "balancerVault": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
     "balancerPool": "0xd1d7fa8871d84d0e77020fc28b7cd5718c446522",
+    
+    # Swapr V3 (Algebra) Router
+    "swaprRouterV3": "0xfFB643E73f280B97809A8b41f7232AB401a04ee1",
 }
 
 # Contract warnings and notes
