@@ -1,4 +1,3 @@
-
 # Load Swapr/Algebra ABIs
 
 ALGEBRA_POOL_ABI = [
@@ -10,40 +9,40 @@ ALGEBRA_POOL_ABI = [
       "type":"constructor"
    },
    {
-      "anonymous":false,
+      "anonymous":False,
       "inputs":[
          {
-            "indexed":true,
+            "indexed":True,
             "internalType":"address",
             "name":"owner",
             "type":"address"
          },
          {
-            "indexed":true,
+            "indexed":True,
             "internalType":"int24",
             "name":"bottomTick",
             "type":"int24"
          },
          {
-            "indexed":true,
+            "indexed":True,
             "internalType":"int24",
             "name":"topTick",
             "type":"int24"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint128",
             "name":"liquidityAmount",
             "type":"uint128"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint256",
             "name":"amount0",
             "type":"uint256"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint256",
             "name":"amount1",
             "type":"uint256"
@@ -53,40 +52,40 @@ ALGEBRA_POOL_ABI = [
       "type":"event"
    },
    {
-      "anonymous":false,
+      "anonymous":False,
       "inputs":[
          {
-            "indexed":true,
+            "indexed":True,
             "internalType":"address",
             "name":"owner",
             "type":"address"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"address",
             "name":"recipient",
             "type":"address"
          },
          {
-            "indexed":true,
+            "indexed":True,
             "internalType":"int24",
             "name":"bottomTick",
             "type":"int24"
          },
          {
-            "indexed":true,
+            "indexed":True,
             "internalType":"int24",
             "name":"topTick",
             "type":"int24"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint128",
             "name":"amount0",
             "type":"uint128"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint128",
             "name":"amount1",
             "type":"uint128"
@@ -96,16 +95,16 @@ ALGEBRA_POOL_ABI = [
       "type":"event"
    },
    {
-      "anonymous":false,
+      "anonymous":False,
       "inputs":[
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint8",
             "name":"communityFee0New",
             "type":"uint8"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint8",
             "name":"communityFee1New",
             "type":"uint8"
@@ -115,10 +114,10 @@ ALGEBRA_POOL_ABI = [
       "type":"event"
    },
    {
-      "anonymous":false,
+      "anonymous":False,
       "inputs":[
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint16",
             "name":"fee",
             "type":"uint16"
@@ -128,40 +127,40 @@ ALGEBRA_POOL_ABI = [
       "type":"event"
    },
    {
-      "anonymous":false,
+      "anonymous":False,
       "inputs":[
          {
-            "indexed":true,
+            "indexed":True,
             "internalType":"address",
             "name":"sender",
             "type":"address"
          },
          {
-            "indexed":true,
+            "indexed":True,
             "internalType":"address",
             "name":"recipient",
             "type":"address"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint256",
             "name":"amount0",
             "type":"uint256"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint256",
             "name":"amount1",
             "type":"uint256"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint256",
             "name":"paid0",
             "type":"uint256"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint256",
             "name":"paid1",
             "type":"uint256"
@@ -171,10 +170,10 @@ ALGEBRA_POOL_ABI = [
       "type":"event"
    },
    {
-      "anonymous":false,
+      "anonymous":False,
       "inputs":[
          {
-            "indexed":true,
+            "indexed":True,
             "internalType":"address",
             "name":"virtualPoolAddress",
             "type":"address"
@@ -184,16 +183,16 @@ ALGEBRA_POOL_ABI = [
       "type":"event"
    },
    {
-      "anonymous":false,
+      "anonymous":False,
       "inputs":[
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint160",
             "name":"price",
             "type":"uint160"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"int24",
             "name":"tick",
             "type":"int24"
@@ -203,10 +202,10 @@ ALGEBRA_POOL_ABI = [
       "type":"event"
    },
    {
-      "anonymous":false,
+      "anonymous":False,
       "inputs":[
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint32",
             "name":"liquidityCooldown",
             "type":"uint32"
@@ -216,46 +215,46 @@ ALGEBRA_POOL_ABI = [
       "type":"event"
    },
    {
-      "anonymous":false,
+      "anonymous":False,
       "inputs":[
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"address",
             "name":"sender",
             "type":"address"
          },
          {
-            "indexed":true,
+            "indexed":True,
             "internalType":"address",
             "name":"owner",
             "type":"address"
          },
          {
-            "indexed":true,
+            "indexed":True,
             "internalType":"int24",
             "name":"bottomTick",
             "type":"int24"
          },
          {
-            "indexed":true,
+            "indexed":True,
             "internalType":"int24",
             "name":"topTick",
             "type":"int24"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint128",
             "name":"liquidityAmount",
             "type":"uint128"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint256",
             "name":"amount0",
             "type":"uint256"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint256",
             "name":"amount1",
             "type":"uint256"
@@ -265,46 +264,46 @@ ALGEBRA_POOL_ABI = [
       "type":"event"
    },
    {
-      "anonymous":false,
+      "anonymous":False,
       "inputs":[
          {
-            "indexed":true,
+            "indexed":True,
             "internalType":"address",
             "name":"sender",
             "type":"address"
          },
          {
-            "indexed":true,
+            "indexed":True,
             "internalType":"address",
             "name":"recipient",
             "type":"address"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"int256",
             "name":"amount0",
             "type":"int256"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"int256",
             "name":"amount1",
             "type":"int256"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint160",
             "name":"price",
             "type":"uint160"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"uint128",
             "name":"liquidity",
             "type":"uint128"
          },
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"int24",
             "name":"tick",
             "type":"int24"
@@ -314,10 +313,10 @@ ALGEBRA_POOL_ABI = [
       "type":"event"
    },
    {
-      "anonymous":false,
+      "anonymous":False,
       "inputs":[
          {
-            "indexed":false,
+            "indexed":False,
             "internalType":"int24",
             "name":"newTickSpacing",
             "type":"int24"

@@ -60,7 +60,7 @@ class MockFutarchyBot:
 # Use the correct conditional token pair that worked for the user
 TOKEN_IN_ADDR = SDAI_YES_ADDRESS
 TOKEN_OUT_ADDR = GNO_YES_ADDRESS
-AMOUNT_IN = 0.0000002 # Match user's successful amount
+AMOUNT_IN = 0.03 # Match user's successful amount
 
 # Renamed main function to reflect simulation focus
 def run_simulation_only_test(): 
