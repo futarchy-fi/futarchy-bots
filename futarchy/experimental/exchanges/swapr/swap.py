@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional, Dict, Any, List
 
 from web3 import Web3
 from web3.exceptions import ContractLogicError
+from eth_abi import decode
 
 # --- Local Project Imports ---
 # Assuming these ABIs and constants are defined in the config
@@ -111,8 +112,32 @@ class SwaprV3Handler:
 
         pool_address_cs = None
 
-        # Determine the Swapr pool
-        if sdai_yes and gno_yes and (token_in_addr_cs in [sdai_yes, gno_yes] and token_out_addr_cs in [sdai_yes, gno_yes]):
+        # Get conditional YES/NO token addresses from env
+        sdai_yes_token = os.environ.get("SDAI_YES_ADDRESS")
+        sdai_no_token = os.environ.get("SDAI_NO_ADDRESS")
+        gno_yes_token = os.environ.get("GNO_YES_ADDRESS")
+        gno_no_token = os.environ.get("GNO_NO_ADDRESS")
+
+        sdai_yes_token_cs = self.w3.to_checksum_address(sdai_yes_token) if sdai_yes_token else None
+        sdai_no_token_cs = self.w3.to_checksum_address(sdai_no_token) if sdai_no_token else None
+        gno_yes_token_cs = self.w3.to_checksum_address(gno_yes_token) if gno_yes_token else None
+        gno_no_token_cs = self.w3.to_checksum_address(gno_no_token) if gno_no_token else None
+
+        # Use YES pool if either token is a conditional YES token
+        if (token_in_addr_cs in [sdai_yes_token_cs, gno_yes_token_cs] or token_out_addr_cs in [sdai_yes_token_cs, gno_yes_token_cs]):
+            swapr_pool_yes = os.environ.get("SWAPR_POOL_YES_ADDRESS")
+            self._log(f"Value from os.environ.get('SWAPR_POOL_YES_ADDRESS'): '{swapr_pool_yes}'")
+            if swapr_pool_yes:
+                pool_address_cs = self.w3.to_checksum_address(swapr_pool_yes)
+                self._log(f"Using Swapr YES Pool from env: {pool_address_cs}")
+        # Use NO pool if either token is a conditional NO token
+        elif (token_in_addr_cs in [sdai_no_token_cs, gno_no_token_cs] or token_out_addr_cs in [sdai_no_token_cs, gno_no_token_cs]):
+            swapr_pool_no = os.environ.get("SWAPR_POOL_NO_ADDRESS")
+            if swapr_pool_no:
+                pool_address_cs = self.w3.to_checksum_address(swapr_pool_no)
+                self._log(f"Using Swapr NO Pool from env: {pool_address_cs}")
+        # (Optional) Keep original logic for other pairs, if needed
+        elif sdai_yes and gno_yes and (token_in_addr_cs in [sdai_yes, gno_yes] and token_out_addr_cs in [sdai_yes, gno_yes]):
             swapr_pool_yes = os.environ.get("SWAPR_POOL_YES_ADDRESS")
             self._log(f"Value from os.environ.get('SWAPR_POOL_YES_ADDRESS'): '{swapr_pool_yes}'")
             if swapr_pool_yes:
@@ -224,11 +249,11 @@ class SwaprV3Handler:
             output = before_call_trace.get('output')
             self._log(f"Before price output: {output}")
             if output and output != "0x":
-                 # Let decode errors propagate
-                 pool_contract = self.w3.eth.contract(address=pool_address_cs, abi=ALGEBRA_POOL_ABI)
-                 decoded_data = pool_contract.decode_function_result('globalState', output)
-                 sqrt_price_x96_before = decoded_data[0]
-                 self._log(f"Extracted sqrtPriceX96 before from globalState: {sqrt_price_x96_before}")
+                global_state_output_types = ['uint160', 'int24', 'uint16', 'uint16', 'uint8', 'uint8', 'bool']
+                output_bytes = self.w3.to_bytes(hexstr=output)
+                decoded_data = decode(global_state_output_types, output_bytes)
+                sqrt_price_x96_before = decoded_data[0]
+                self._log(f"Extracted sqrtPriceX96 before from globalState: {sqrt_price_x96_before}")
         else:
             self._log("No output in before_call_trace or call failed")
             self._log(f"before_call_trace status: {before_call_trace.get('error', 'No explicit error')}")
@@ -243,11 +268,11 @@ class SwaprV3Handler:
             output = after_call_trace.get('output')
             self._log(f"After price output: {output}")
             if output and output != "0x":
-                 # Let decode errors propagate
-                 pool_contract = self.w3.eth.contract(address=pool_address_cs, abi=ALGEBRA_POOL_ABI)
-                 decoded_data = pool_contract.decode_function_result('globalState', output)
-                 sqrt_price_x96_after = decoded_data[0]
-                 self._log(f"Extracted sqrtPriceX96 after from globalState: {sqrt_price_x96_after}")
+                global_state_output_types = ['uint160', 'int24', 'uint16', 'uint16', 'uint8', 'uint8', 'bool']
+                output_bytes = self.w3.to_bytes(hexstr=output)
+                decoded_data = decode(global_state_output_types, output_bytes)
+                sqrt_price_x96_after = decoded_data[0]
+                self._log(f"Extracted sqrtPriceX96 after from globalState: {sqrt_price_x96_after}")
         else:
             self._log("No output in after_call_trace or call failed")
             self._log(f"after_call_trace status: {after_call_trace.get('error', 'No explicit error')}")
@@ -427,4 +452,3 @@ class SwaprV3Handler:
                 self._log(f"Including tx_hash in error dict: {tx_hash.hex()}")
                 error_dict['tx_hash'] = tx_hash.hex()
             return error_dict
-
