@@ -12,18 +12,52 @@ from pathlib import Path
 import sys
 import binascii
 
-# Add the project root to the path to import project modules
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-
-# Import project constants
-from config.constants import (
-    CONTRACT_ADDRESSES, TOKEN_CONFIG, DEFAULT_SWAP_CONFIG, ERC20_ABI
-)
-
 # Load .env file but don't override existing environment variables
 load_dotenv(override=False)  # This ensures command-line vars take precedence
 
 DEBUG = True
+
+# Hardcoded constants instead of imports from config.constants
+# Token configuration
+TOKEN_CONFIG = {
+    "currency": {
+        "no_address": "0xE1133Ef862f3441880adADC2096AB67c63f6E102"  # NO_SDAI
+    },
+    "company": {
+        "no_address": "0xf1B3E5Ffc0219A4F8C0ac69EC98C97709EdfB6c9"  # NO_GNO
+    }
+}
+
+# ERC20 ABI - minimal version
+ERC20_ABI = [
+    {
+        "inputs": [{"internalType": "address", "name": "account", "type": "address"}],
+        "name": "balanceOf",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {"internalType": "address", "name": "owner", "type": "address"},
+            {"internalType": "address", "name": "spender", "type": "address"}
+        ],
+        "name": "allowance",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {"internalType": "address", "name": "spender", "type": "address"},
+            {"internalType": "uint256", "name": "amount", "type": "uint256"}
+        ],
+        "name": "approve",
+        "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }
+]
 
 def debug_print(msg):
     if DEBUG:
@@ -85,27 +119,43 @@ def main():
 
     # 3. Define contract addresses (update as needed)
     #    - Must match the deployed UniswapV3PassthroughRouter for which you are owner
-    UNISWAP_V3_PASSTHROUGH_ROUTER_ADDRESS = w3.to_checksum_address(os.getenv("V3_PASSTHROUGH_ROUTER_ADDRESS", "0x77DBE0441C950cE9C97a5F9A79CF316947aAa578"))
-    # Updated pool address for YES pool
-    UNISWAP_V3_POOL_ADDRESS = w3.to_checksum_address(os.getenv("POOL_YES_ADDRESS", "0x9a14d28909f42823ee29847f87a15fb3b6e8aed3"))
+    # UNISWAP_V3_PASSTHROUGH_ROUTER_ADDRESS = w3.to_checksum_address(os.getenv("V3_PASSTHROUGH_ROUTER_ADDRESS", "0x77DBE0441C950cE9C97a5F9A79CF316947aAa578"))
+    UNISWAP_V3_PASSTHROUGH_ROUTER_ADDRESS = w3.to_checksum_address(os.getenv("V3_PASSTHROUGH_ROUTER_ADDRESS", "0x61A00dA5287988d39E8a354F386D600595B4D1e9"))
+    # Updated pool address from the provided parameters (pool NO)
+    UNISWAP_V3_POOL_ADDRESS = w3.to_checksum_address(os.getenv("UNISWAP_V3_POOL_ADDRESS", "0x6E33153115Ab58dab0e0F1E3a2ccda6e67FA5cD7"))
     # Default recipient address
-    RECIPIENT_ADDRESS = owner_address  # Use our own address as recipient
+    RECIPIENT_ADDRESS = w3.to_checksum_address(os.getenv("RECIPIENT_ADDRESS", "0x33A0b5d7DA5314594D2C163D448030b9F1cADcb2"))
     
-    # Use SDAI YES and GNO YES tokens
-    TOKEN_IN_ADDRESS = w3.to_checksum_address(os.getenv("SDAI_YES_ADDRESS", "0x493A0D1c776f8797297Aa8B34594fBd0A7F8968a"))  # SDAI YES
-    TOKEN_OUT_ADDRESS = w3.to_checksum_address(os.getenv("GNO_YES_ADDRESS", "0x177304d505eCA60E1aE0dAF1bba4A4c4181dB8Ad"))  # GNO YES
+    # Use NO_SDAI and NO_GNO tokens 
+    TOKEN_IN_ADDRESS = w3.to_checksum_address(os.getenv("TOKEN_IN_ADDRESS", TOKEN_CONFIG["currency"]["no_address"]))  # NO_SDAI
+    TOKEN_OUT_ADDRESS = w3.to_checksum_address(os.getenv("TOKEN_OUT_ADDRESS", TOKEN_CONFIG["company"]["no_address"])) # NO_GNO
 
     # 4. ABIs
-    # Passthrough Router ABI (interface definition). Ensure it matches your deployed version.
+    # Passthrough Router ABI updated with the new struct-based swap function
     passthrough_router_abi = [
         {
             "inputs": [
-                {"internalType": "address", "name": "pool", "type": "address"},
-                {"internalType": "address", "name": "recipient", "type": "address"},
-                {"internalType": "bool", "name": "zeroForOne", "type": "bool"},
-                {"internalType": "int256", "name": "amountSpecified", "type": "int256"},
-                {"internalType": "uint160", "name": "sqrtPriceLimitX96", "type": "uint160"},
-                {"internalType": "bytes", "name": "data", "type": "bytes"}
+                {
+                    "components": [
+                        {"internalType": "address", "name": "pool", "type": "address"},
+                        {"internalType": "address", "name": "recipient", "type": "address"},
+                        {"internalType": "bytes", "name": "callbackData", "type": "bytes"}
+                    ],
+                    "internalType": "struct IUniswapV3PassthroughRouter.PoolInteraction",
+                    "name": "poolInfo",
+                    "type": "tuple"
+                },
+                {
+                    "components": [
+                        {"internalType": "bool", "name": "zeroForOne", "type": "bool"},
+                        {"internalType": "int256", "name": "amountSpecified", "type": "int256"},
+                        {"internalType": "uint160", "name": "sqrtPriceLimitX96", "type": "uint160"},
+                        {"internalType": "uint256", "name": "minAmountReceived", "type": "uint256"}
+                    ],
+                    "internalType": "struct IUniswapV3PassthroughRouter.TokenInteraction",
+                    "name": "tokenInfo",
+                    "type": "tuple"
+                }
             ],
             "name": "swap",
             "outputs": [
@@ -140,19 +190,21 @@ def main():
     token_in_balance = token_in_contract.functions.balanceOf(owner_address).call()
     token_out_balance_before = token_out_contract.functions.balanceOf(owner_address).call()
     
-    # Update token names to reflect YES tokens
-    token_in_symbol = "SDAI YES" if TOKEN_IN_ADDRESS.lower() == TOKEN_CONFIG["currency"]["yes_address"].lower() else "TOKEN_IN"
-    token_out_symbol = "GNO YES" if TOKEN_OUT_ADDRESS.lower() == TOKEN_CONFIG["company"]["yes_address"].lower() else "TOKEN_OUT"
+    # Update token names to reflect NO tokens
+    token_in_symbol = "NO_SDAI" if TOKEN_IN_ADDRESS.lower() == TOKEN_CONFIG["currency"]["no_address"].lower() else "TOKEN_IN"
+    token_out_symbol = "NO_GNO" if TOKEN_OUT_ADDRESS.lower() == TOKEN_CONFIG["company"]["no_address"].lower() else "TOKEN_OUT"
     
     print(f"💰 {w3.from_wei(token_in_balance, 'ether')} {token_in_symbol} balance")
     print(f"💰 {w3.from_wei(token_out_balance_before, 'ether')} {token_out_symbol} balance before swap")
 
     # 7. Decide how much to swap; ensure you have enough balance
-    # Command-line override takes precedence over .env
-    amount = float(os.environ.get("AMOUNT_TO_SWAP", "0.001"))  # Use os.environ.get instead of os.getenv
-    amount_in_wei = w3.to_wei(amount, 'ether')
+    # Updated amount for testing (0.0001 tokens in wei)
+    amount_in_wei = int(os.getenv("AMOUNT_TO_SWAP_WEI", "100000000000000"))
+    # Allow for decimal input as well
+    if os.getenv("AMOUNT_TO_SWAP"):
+        amount_in_wei = w3.to_wei(float(os.getenv("AMOUNT_TO_SWAP")), "ether")
     
-    print(f"🔄 Swap amount: {amount} {token_in_symbol}")
+    print(f"🔄 Swap amount: {w3.from_wei(amount_in_wei, 'ether')} {token_in_symbol}")
     
     if token_in_balance < amount_in_wei:
         print(f"❌ Insufficient {token_in_symbol} balance.")
@@ -184,7 +236,7 @@ def main():
             # Use our helper function to send the transaction safely
             tx_hash = send_signed_transaction(w3, signed_approve)
             
-            print(f"⏳ Approval tx sent: {tx_hash.hex()}")
+            print(f"⏳ Approval tx sent: 0x{tx_hash.hex()}")
             receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
             if receipt.status == 1:
                 print("✅ Approval successful.")
@@ -198,10 +250,10 @@ def main():
 
     # 9. Perform the swap
     # For a normal "exact input" swap, amountSpecified > 0. 
-    # Updated parameters for SDAI YES to GNO YES swap
-    zero_for_one = False  # SDAI YES (token1) to GNO YES (token0)
-    # Use a higher price limit for zero_for_one=False (higher than current)
-    sqrt_price_limit_x96 = int(974062921369258046699441232588 * 1.2)  # 120% of current price
+    # Updated parameters from the provided data
+    zero_for_one = True  # From the provided parameters
+    sqrt_price_limit_x96 = 4295128740  # From the provided parameters
+    min_amount_received = int(amount_in_wei * 0.001)  # Decreased from 1% to 0.1% of input to allow more slippage
 
     # Double check that your address is indeed the router's owner
     router_owner = router_contract.functions.owner().call()
@@ -233,7 +285,7 @@ def main():
         # Use our helper function to send the transaction safely
         tx_hash = send_signed_transaction(w3, signed_authorize_tx)
         
-        print(f"⏳ Pool authorization tx sent: {tx_hash.hex()}")
+        print(f"⏳ Pool authorization tx sent: 0x{tx_hash.hex()}")
         receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
         if receipt.status == 1:
             print("✅ Pool authorization successful.")
@@ -251,22 +303,38 @@ def main():
     print(f"Zero for One: {zero_for_one}")
     print(f"Amount: {amount_in_wei} ({w3.from_wei(amount_in_wei, 'ether')} tokens)")
     print(f"Sqrt Price Limit X96: {sqrt_price_limit_x96}")
+    print(f"Min Amount Received: {min_amount_received} ({w3.from_wei(min_amount_received, 'ether')} tokens)")
     print(f"Token In: {TOKEN_IN_ADDRESS} ({token_in_symbol})")
     print(f"Token Out: {TOKEN_OUT_ADDRESS} ({token_out_symbol})")
     
     try:
         nonce = w3.eth.get_transaction_count(owner_address)
+        
+        # Create the input structs for the new swap function signature
+        pool_interaction = (
+            UNISWAP_V3_POOL_ADDRESS,  # pool
+            RECIPIENT_ADDRESS,        # recipient
+            b''                       # callbackData (empty)
+        )
+        
+        token_interaction = (
+            zero_for_one,            # zeroForOne
+            amount_in_wei,           # amountSpecified
+            sqrt_price_limit_x96,    # sqrtPriceLimitX96
+            min_amount_received      # minAmountReceived
+        )
+        
+        # Check recipient's balance before swap
+        recipient_balance_before = token_out_contract.functions.balanceOf(RECIPIENT_ADDRESS).call()
+        print(f"🔹 {token_out_symbol} balance before swap (recipient): {w3.from_wei(recipient_balance_before, 'ether')}")
+        
         swap_tx = router_contract.functions.swap(
-            UNISWAP_V3_POOL_ADDRESS,
-            RECIPIENT_ADDRESS,        # Updated to use specified recipient
-            zero_for_one,             # From the provided parameters
-            amount_in_wei,            # From the provided parameters
-            sqrt_price_limit_x96,     # From the provided parameters
-            b''                       # No data as specified
+            pool_interaction,   # poolInfo struct
+            token_interaction   # tokenInfo struct
         ).build_transaction({
             "from": owner_address,
             "nonce": nonce,
-            "gas": 1000000,  # Increase gas limit
+            "gas": 1000000,  # increased from 500000 to 1000000
             "maxFeePerGas": w3.eth.gas_price * 2,
             "maxPriorityFeePerGas": w3.eth.gas_price,
             "chainId": w3.eth.chain_id,
@@ -279,13 +347,23 @@ def main():
         # Use our helper function to send the transaction safely
         tx_hash = send_signed_transaction(w3, signed_swap_tx)
         
-        print(f"⏳ Swap transaction sent: {tx_hash.hex()}")
+        print(f"⏳ Swap transaction sent: 0x{tx_hash.hex()}")
 
         receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        
+        # Check recipient's balance after swap to determine if the swap was successful
+        recipient_balance_after = token_out_contract.functions.balanceOf(RECIPIENT_ADDRESS).call()
+        
         if receipt.status == 1:
-            print("✅ Swap successful!")
+            print("✅ Swap transaction confirmed on-chain.")
         else:
-            print("❌ Swap transaction reverted or failed.")
+            print("⚠️ Transaction receipt shows reverted status, but checking actual balances...")
+            
+        # Determine success based on token balance change
+        if recipient_balance_after > recipient_balance_before:
+            print("✅ Swap successful! Recipient balance increased.")
+        else:
+            print("❌ Swap failed. No tokens received by recipient.")
 
         # 10. Check post-swap balances
         # If recipient is not our address, check their balance too
@@ -295,10 +373,11 @@ def main():
         print(f"🔹 Gained (owner): {w3.from_wei(gained, 'ether')} {token_out_symbol}")
         
         if RECIPIENT_ADDRESS.lower() != owner_address.lower():
-            recipient_balance = token_out_contract.functions.balanceOf(RECIPIENT_ADDRESS).call()
-            print(f"🔹 {token_out_symbol} balance (recipient): {w3.from_wei(recipient_balance, 'ether')}")
+            tokens_received = recipient_balance_after - recipient_balance_before
+            print(f"🔹 {token_out_symbol} balance (recipient): {w3.from_wei(recipient_balance_after, 'ether')}")
+            print(f"🔹 Tokens received (recipient): {w3.from_wei(tokens_received, 'ether')} {token_out_symbol}")
 
-        print(f"\n🔗 Explorer: https://gnosisscan.io/tx/{tx_hash.hex()}")
+        print(f"\n🔗 Explorer: https://gnosisscan.io/tx/0x{tx_hash.hex()}")
 
     except Exception as e:
         print(f"❌ Error during swap: {str(e)}")

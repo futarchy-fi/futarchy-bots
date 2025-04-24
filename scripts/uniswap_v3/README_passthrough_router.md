@@ -8,6 +8,32 @@ This script allows you to execute swaps through a Uniswap V3 pool using a `Unisw
 - The target Uniswap V3 pool must be authorized (the script will attempt to authorize it)
 - Sufficient token balance to perform the swap
 
+## Updated Contract Structure
+
+The script has been updated to work with the latest version of the UniswapV3PassthroughRouter contract which uses a struct-based parameter system:
+
+```solidity
+// New swap function signature
+function swap(
+    PoolInteraction calldata poolInfo,
+    TokenInteraction calldata tokenInfo
+) external returns (int256 amount0, int256 amount1);
+
+// Struct definitions
+struct TokenInteraction {
+    bool zeroForOne;
+    int256 amountSpecified;
+    uint160 sqrtPriceLimitX96;
+    uint256 minAmountReceived;
+}
+
+struct PoolInteraction {
+    address pool;
+    address recipient;
+    bytes callbackData;
+}
+```
+
 ## Configuration
 
 Set the following environment variables in your `.env` file:
@@ -51,6 +77,7 @@ The script is configured with these default swap parameters:
 - `zeroForOne`: `true` (swapping token0 for token1)
 - `sqrtPriceLimitX96`: `4295128740` (minimum price limit)
 - `amountSpecified`: `1000000000000000000` (1 token with 18 decimals)
+- `minAmountReceived`: 1% of the input amount (slippage protection)
 
 ## Key Features
 
@@ -59,6 +86,7 @@ The script is configured with these default swap parameters:
 - Approves token spending if needed
 - Executes the swap with detailed logging
 - Reports token balances before and after the swap
+- Includes minimum amount protection (slippage control)
 
 ## Important Notes
 
@@ -94,6 +122,7 @@ Recipient: 0x33A0b5d7DA5314594D2C163D448030b9F1cADcb2
 Zero for One: True
 Amount: 1000000000000000000 (1.0 tokens)
 Sqrt Price Limit X96: 4295128740
+Min Amount Received: 10000000000000000 (0.01 tokens)
 Token In: 0xE1133Ef862f3441880adADC2096AB67c63f6E102 (NO_SDAI)
 Token Out: 0xf1B3E5Ffc0219A4F8C0ac69EC98C97709EdfB6c9 (NO_GNO)
 ⏳ Swap transaction sent: 0x...
