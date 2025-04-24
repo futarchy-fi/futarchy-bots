@@ -13,6 +13,7 @@ from ...config.constants import (
     CONTRACT_ADDRESSES, 
     ERC20_ABI, 
 )
+from futarchy.global_token_config import proposal
 
 # Removed get_raw_transaction import
 
@@ -28,16 +29,17 @@ if not BOT_ADDRESS:
     
 # Removed PRIVATE_KEY loading
 
-SDAI_YES_ADDRESS = os.environ.get("SDAI_YES_ADDRESS")
-if not SDAI_YES_ADDRESS:
-    print("⚠️ SDAI_YES_ADDRESS environment variable not set.")
+SDAI_YES_ADDRESS = os.environ.get("SDAI_YES_ADDRESS") or proposal.currency_conditional.yes_token
+if not os.environ.get("SDAI_YES_ADDRESS"):
+    print("⚠️ SDAI_YES_ADDRESS environment variable not set, using config value.")
 
-GNO_YES_ADDRESS = os.environ.get("GNO_YES_ADDRESS")
-if not GNO_YES_ADDRESS:
-    print("⚠️ GNO_YES_ADDRESS environment variable not set.")
-    # exit()
+GNO_YES_ADDRESS = os.environ.get("GNO_YES_ADDRESS") or proposal.company_conditionals.yes_token
+if not os.environ.get("GNO_YES_ADDRESS"):
+    print("⚠️ GNO_YES_ADDRESS environment variable not set, using config value.")
 
-# Removed SWAPR_* address loading as they are not used
+SWAPR_ROUTER_ADDRESS = os.environ.get("SWAPR_ROUTER_ADDRESS") or proposal.pools["swapr"].router
+SWAPR_POOL_YES_ADDRESS = os.environ.get("SWAPR_POOL_YES_ADDRESS") or proposal.pools["swapr"].yes_pool
+SWAPR_POOL_NO_ADDRESS = os.environ.get("SWAPR_POOL_NO_ADDRESS") or proposal.pools["swapr"].no_pool
 
 # --- Add Tenderly Credentials --- 
 TENDERLY_ACCESS_KEY = os.environ.get("TENDERLY_ACCESS_KEY")
@@ -108,7 +110,7 @@ def run_simulation_only_test():
         print(f"❌ Error initializing SwaprV3Handler: {e}")
         return
 
-    print(f"\n--- Testing simulate_swap_exact_in ---")
+    print("\n--- Testing simulate_swap_exact_in ---")
     print(f"Simulating Swap: {AMOUNT_IN} {TOKEN_IN_ADDR} for {TOKEN_OUT_ADDR}")
 
     print("Calling simulate_swap_exact_in...") # Debug
@@ -121,7 +123,7 @@ def run_simulation_only_test():
 
     print("\n--- Simulation Result ---")
     if sim_result and sim_result.get('success'):
-        print(f"✅ Simulation successful!")
+        print("✅ Simulation successful!")
         sim_amount_out = sim_result.get('simulated_amount_out', 0)
         est_price = sim_result.get('estimated_price', 0)
         print(f"   Estimated Amount Out: {sim_amount_out:.8f} {TOKEN_OUT_ADDR}")
@@ -129,9 +131,9 @@ def run_simulation_only_test():
              # Display price as TOKEN_OUT per TOKEN_IN
              print(f"   Estimated Price: {1/Decimal(est_price):.6f} {TOKEN_OUT_ADDR} per {TOKEN_IN_ADDR}") 
         else:
-             print(f"   Estimated Price: N/A (zero output)")
+             print("   Estimated Price: N/A (zero output)")
     else:
-        print(f"❌ Simulation failed!")
+        print("❌ Simulation failed!")
         print(f"   Error: {sim_result.get('error', 'Unknown error')}")
 
 if __name__ == "__main__":
@@ -144,20 +146,20 @@ if __name__ == "__main__":
          print("❌ Required ABIs (e.g., ERC20_ABI) not loaded from constants.")
     # Check if the keys were found in CONTRACT_ADDRESSES
     elif not BOT_ADDRESS:
-         print(f"❌ BOT_ADDRESS not found in environment.")
+         print("❌ BOT_ADDRESS not found in environment.")
     # Removed PRIVATE_KEY check
     elif not SDAI_YES_ADDRESS:
-         print(f"❌ SDAI_YES_ADDRESS not found in environment.")
+         print("❌ SDAI_YES_ADDRESS not found in environment.")
     elif not GNO_YES_ADDRESS:
-         print(f"❌ GNO_YES_ADDRESS not found in environment.")
+         print("❌ GNO_YES_ADDRESS not found in environment.")
     # --- Add Tenderly Env Var Checks ---
     elif not TENDERLY_ACCESS_KEY:
-        print(f"❌ TENDERLY_ACCESS_KEY not found in environment.")
+        print("❌ TENDERLY_ACCESS_KEY not found in environment.")
     elif not TENDERLY_ACCOUNT_SLUG:
-        print(f"❌ TENDERLY_ACCOUNT_SLUG not found in environment.")
+        print("❌ TENDERLY_ACCOUNT_SLUG not found in environment.")
     elif not TENDERLY_PROJECT_SLUG:
-        print(f"❌ TENDERLY_PROJECT_SLUG not found in environment.")
+        print("❌ TENDERLY_PROJECT_SLUG not found in environment.")
     # --- End Tenderly Env Var Checks ---
     # Removed SWAPR_* address checks
     else:
-        run_simulation_only_test() # Call the simulation-specific function 
+        run_simulation_only_test() # Call the simulation-specific function          

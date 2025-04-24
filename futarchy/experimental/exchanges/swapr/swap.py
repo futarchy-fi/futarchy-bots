@@ -3,10 +3,9 @@ import traceback
 import json
 import os
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional, Dict, Any, List
+from typing import TYPE_CHECKING, Optional
 
 from web3 import Web3
-from web3.exceptions import ContractLogicError
 from eth_abi import decode
 
 # --- Local Project Imports ---
@@ -17,6 +16,7 @@ from ...config import (
     CHAIN_ID
 )
 from ...config.abis.swapr import SWAPR_ROUTER_ABI, ALGEBRA_POOL_ABI
+from futarchy.global_token_config import pool, proposal
 from ...utils.web3_utils import get_raw_transaction
 # Import the Tenderly client class
 from ...services.tenderly_client import TenderlySimulationClient # Adjust path as needed
@@ -64,7 +64,7 @@ class SwaprV3Handler:
         self._log("Initializing SwaprV3Handler...")
 
         # Load Swapr Router V3 contract
-        self.router_address = self.w3.to_checksum_address(CONTRACT_ADDRESSES["swaprRouterV3"])
+        self.router_address = self.w3.to_checksum_address(pool("swapr").router)
         self._log(f"Router Address: {self.router_address}")
         self.router_contract = self.w3.eth.contract(
             address=self.router_address,
@@ -93,17 +93,17 @@ class SwaprV3Handler:
         token_in_addr_cs = self.w3.to_checksum_address(token_in_addr)
         token_out_addr_cs = self.w3.to_checksum_address(token_out_addr)
 
-        # Get token addresses for matching
+        # Get token addresses for matching - use environment variables if available, otherwise use config
         sdai_yes_env = os.environ.get("SWAPR_SDAI_YES_ADDRESS")
         sdai_no_env = os.environ.get("SWAPR_SDAI_NO_ADDRESS")
         gno_yes_env = os.environ.get("SWAPR_GNO_YES_ADDRESS")
         gno_no_env = os.environ.get("SWAPR_GNO_NO_ADDRESS")
 
-        sdai_yes = self.w3.to_checksum_address(sdai_yes_env) if sdai_yes_env else None
-        sdai_no = self.w3.to_checksum_address(sdai_no_env) if sdai_no_env else None
-        gno_yes = self.w3.to_checksum_address(gno_yes_env) if gno_yes_env else None
-        gno_no = self.w3.to_checksum_address(gno_no_env) if gno_no_env else None
-        sdai = self.w3.to_checksum_address(CONTRACT_ADDRESSES.get("baseCurrencyToken", ""))
+        sdai_yes = self.w3.to_checksum_address(sdai_yes_env) if sdai_yes_env else self.w3.to_checksum_address(proposal.currency_conditional.yes_token)
+        sdai_no = self.w3.to_checksum_address(sdai_no_env) if sdai_no_env else self.w3.to_checksum_address(proposal.currency_conditional.no_token)
+        gno_yes = self.w3.to_checksum_address(gno_yes_env) if gno_yes_env else self.w3.to_checksum_address(proposal.company_conditionals.yes_token)
+        gno_no = self.w3.to_checksum_address(gno_no_env) if gno_no_env else self.w3.to_checksum_address(proposal.company_conditionals.no_token)
+        sdai = self.w3.to_checksum_address(os.environ.get("SDAI_ADDRESS", proposal.currency_token))
 
         self._log(f"Using sDAI YES address: {sdai_yes} (from env: {bool(sdai_yes_env)})")
         self._log(f"Using sDAI NO address: {sdai_no} (from env: {bool(sdai_no_env)})")
@@ -130,12 +130,18 @@ class SwaprV3Handler:
             if swapr_pool_yes:
                 pool_address_cs = self.w3.to_checksum_address(swapr_pool_yes)
                 self._log(f"Using Swapr YES Pool from env: {pool_address_cs}")
+            else:
+                pool_address_cs = self.w3.to_checksum_address(pool("swapr").yes_pool)
+                self._log(f"Using Swapr YES Pool from config: {pool_address_cs}")
         # Use NO pool if either token is a conditional NO token
         elif (token_in_addr_cs in [sdai_no_token_cs, gno_no_token_cs] or token_out_addr_cs in [sdai_no_token_cs, gno_no_token_cs]):
             swapr_pool_no = os.environ.get("SWAPR_POOL_NO_ADDRESS")
             if swapr_pool_no:
                 pool_address_cs = self.w3.to_checksum_address(swapr_pool_no)
                 self._log(f"Using Swapr NO Pool from env: {pool_address_cs}")
+            else:
+                pool_address_cs = self.w3.to_checksum_address(pool("swapr").no_pool)
+                self._log(f"Using Swapr NO Pool from config: {pool_address_cs}")
         # (Optional) Keep original logic for other pairs, if needed
         elif sdai_yes and gno_yes and (token_in_addr_cs in [sdai_yes, gno_yes] and token_out_addr_cs in [sdai_yes, gno_yes]):
             swapr_pool_yes = os.environ.get("SWAPR_POOL_YES_ADDRESS")
@@ -143,11 +149,17 @@ class SwaprV3Handler:
             if swapr_pool_yes:
                 pool_address_cs = self.w3.to_checksum_address(swapr_pool_yes)
                 self._log(f"Using Swapr YES Pool from env: {pool_address_cs}")
+            else:
+                pool_address_cs = self.w3.to_checksum_address(pool("swapr").yes_pool)
+                self._log(f"Using Swapr YES Pool from config: {pool_address_cs}")
         elif sdai_no and gno_no and (token_in_addr_cs in [sdai_no, gno_no] and token_out_addr_cs in [sdai_no, gno_no]):
             swapr_pool_no = os.environ.get("SWAPR_POOL_NO_ADDRESS")
             if swapr_pool_no:
                 pool_address_cs = self.w3.to_checksum_address(swapr_pool_no)
                 self._log(f"Using Swapr NO Pool from env: {pool_address_cs}")
+            else:
+                pool_address_cs = self.w3.to_checksum_address(pool("swapr").no_pool)
+                self._log(f"Using Swapr NO Pool from config: {pool_address_cs}")
         elif sdai_yes and sdai and ((token_in_addr_cs == sdai_yes and token_out_addr_cs == sdai) or (token_out_addr_cs == sdai_yes and token_in_addr_cs == sdai)):
             swapr_sdai_yes_pool = os.environ.get("SWAPR_SDAI_YES_ADDRESS") # Env var seems incorrect, should be pool addr
             if swapr_sdai_yes_pool:
@@ -157,6 +169,9 @@ class SwaprV3Handler:
             elif "sdaiYesPool" in CONTRACT_ADDRESSES:
                  pool_address_cs = self.w3.to_checksum_address(CONTRACT_ADDRESSES["sdaiYesPool"])
                  self._log(f"Using sDAI YES/sDAI Pool Address from CONTRACT_ADDRESSES: {pool_address_cs}")
+            else:
+                pool_address_cs = self.w3.to_checksum_address(pool("swapr").yes_pool)
+                self._log(f"Using sDAI YES/sDAI Pool Address from config: {pool_address_cs}")
 
         # If no pool was determined from specific pairs, raise error
         if not pool_address_cs:
