@@ -1,0 +1,32 @@
+source .env && python -m futarchy.experimental.tests.swapr.test_swapr_sim_only
+
+{
+   "candles":[
+      {
+         "average_price":153.98902837104552,
+         "timestamp":1739930400
+      },
+      {
+         "average_price":170.2125150100961,
+         "timestamp":1739934000
+      },
+      {
+         "average_price":178.7606733799204,
+         "timestamp":1739937600
+      },
+      {
+         "average_price":178.7606733799204,
+         "timestamp":1739941200
+      },
+      {
+         "average_price":179.91612505394446,
+         "timestamp":1739944800
+      },
+      {
+         "average_price":174.33514459601668,
+         "timestamp":1739948400
+      }
+   ],
+   "interval":3600000,
+   "pool_id":"0x88A8ABD96A2e7ceF3B15cB42c11BE862312BA5Da"
+}
