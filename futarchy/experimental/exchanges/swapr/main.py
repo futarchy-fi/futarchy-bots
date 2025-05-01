@@ -4,6 +4,7 @@ from decimal import Decimal
 from web3 import Web3
 from .tenderly_api import TenderlyAPIClient
 from .swap_transaction import build_swap_tx
+import json
 
 # --- Import ABIs ---
 # Use absolute import path from project root
@@ -13,7 +14,7 @@ web3 = Web3(Web3.HTTPProvider(os.getenv("RPC_URL")))
 router_address = web3.to_checksum_address(os.environ.get("SWAPR_ROUTER_ADDRESS"))
 router = web3.eth.contract(address=router_address, abi=SWAPR_ROUTER_ABI)
 
-def simulate_swap(params_tuple):
+def simulate_swap(account, params_tuple, exact_in=True):
     """
     Simulates and potentially executes a swap based on input parameters.
     params_tuple: (address, address, address, uint256, uint256, uint256, uint160)
@@ -75,19 +76,14 @@ def simulate_swap(params_tuple):
     # --- Build Simulation Bundle --- 
     print("Building simulation bundle...")
 
-    # Tx 2: The actual swap simulation (using the passed params_tuple)
-    try:
-        # Use the correctly structured params_tuple directly for encoding
+    if exact_in:
         encoded_swap_input = router.encodeABI(fn_name="exactInputSingle", args=[params_tuple])
-    except Exception as e:
-        print(f"Error encoding exactInputSingle call: {e}")
-        # Consider printing params_tuple here for debugging
-        print(f"Params tuple used: {params_tuple}") 
-        exit(1)
+    else:
+        encoded_swap_input = router.encodeABI(fn_name="exactOutputSingle", args=[params_tuple])
 
     tx_swap_sim = {
         "network_id": str(web3.eth.chain_id),
-        "from": recipient_addr, # Use recipient from params_tuple
+        "from": account.address, # Use passed account object
         "to": router.address, # Target the router contract
         "input": encoded_swap_input,
         "gas": 3000000, # Generous gas limit for swap simulation
@@ -95,7 +91,11 @@ def simulate_swap(params_tuple):
         "save": True, # Optional: Save to Tenderly dashboard
         "save_if_fails": True, # Optional: Save even if it fails
     }
-    # --- End Build Simulation Bundle ---
+
+    # Add this print statement
+    print("--- tx_swap_sim inside simulate_swap (before calling simulate_single) ---")
+    print(json.dumps(tx_swap_sim, indent=2))
+    print("-----------------------------------------------------------------------")
 
     # --- Simulate SINGLE Transaction using Tenderly Client --- 
     print("Simulating SINGLE transaction with Tenderly...")
@@ -132,17 +132,34 @@ def simulate_swap(params_tuple):
 
             if output_hex and output_hex != "0x":
                 print(f"  Raw output hex: {output_hex}") # Print the raw hex found
-                try:
-                    # Decode the output (amountOut is the first value)
-                    # Note: Ensure correct ABI types for decoding
-                    # exactInputSingle output is just uint256 amountOut
-                    decoded_output = web3.eth.abi.decode(['uint256'], bytes.fromhex(output_hex[2:]))
-                    amount_out_wei = decoded_output[0]
-                    amount_out_ether = web3.from_wei(amount_out_wei, 'ether')
-                    print(f"  Simulated amountOut: {amount_out_ether} {token_out_addr}") # Use token_out_addr from params
-                except Exception as e:
-                    print(f"  Could not decode simulation output: {e}")
-                    print(f"  Raw output: {output_hex}")
+
+                if exact_in:
+                    # For exactInput, output is amountOut, input amount is known
+                    amount_out_wei = int(output_hex, 16)
+                    amount_in_wei = params_tuple[5] # amountIn is the 6th element (index 5)
+                    print(f"  Simulated amountOut: {web3.from_wei(amount_out_wei, 'ether')} {token_out_addr}")
+                else:
+                    # For exactOutput, output is amountIn, output amount is known
+                    amount_in_wei = int(output_hex, 16)
+                    amount_out_wei = params_tuple[5] # amountOut is the 6th element (index 5)
+                    print(f"  Simulated amountIn: {web3.from_wei(amount_in_wei, 'ether')} {token_in_addr}")
+
+                amount_out_whole = web3.from_wei(amount_out_wei, 'ether')
+                amount_in_whole = web3.from_wei(amount_in_wei, 'ether')
+
+                # Use Decimal for precision, especially for price
+                amount_in_decimal = Decimal(amount_in_whole)
+                amount_out_decimal = Decimal(amount_out_whole)
+
+                price = amount_out_decimal / amount_in_decimal if amount_in_decimal != Decimal(0) else None
+                print(f"  Simulated price: {price} {token_out_addr}/{token_in_addr}")
+
+                return {
+                    'success': True,
+                    'amount_in': amount_in_decimal,
+                    'amount_out': amount_out_decimal,
+                    'price': price
+                }
             else:
                 print("  No output data returned from simulation.")
         else:
@@ -191,11 +208,14 @@ if __name__ == "__main__":
     recipient_checksum = account.address # Already checksummed by Account object
     deadline = int(time.time()) + 300 # Example deadline 5 mins from now
     amount_in_wei = web3.to_wei(Decimal(str(amount_in)), 'ether')
-    amount_out_minimum = 0 # For simulation/basic swap
+    amount_in_wei_maximum = int(amount_in_wei*1.1)
+    amount_out_wei = 83988380025
+    amount_out_minimum = int(amount_out_wei*0.9)
     sqrt_price_limit_x96 = 0 # For simulation/basic swap
+    fee = 500
 
     # Construct the tuple matching exactInputSingle signature
-    params_tuple = (
+    params_tuple_exact_in = (
         token_in_checksum,
         token_out_checksum,
         recipient_checksum,
@@ -205,9 +225,23 @@ if __name__ == "__main__":
         sqrt_price_limit_x96
     )
 
+    params_tuple_exact_out = (
+        token_in_checksum,
+        token_out_checksum,
+        fee,
+        recipient_checksum,
+        deadline,
+        amount_out_wei,
+        amount_in_wei_maximum,
+        sqrt_price_limit_x96
+    )
+
+
+
     print(f"\nAttempting simulation for {amount_in} {token_in_addr} -> {token_out_addr}...")
     # Pass the correctly structured tuple
-    simulate_swap(params_tuple)
+    print(simulate_swap(account, params_tuple_exact_in, exact_in=True))
+    print(simulate_swap(account, params_tuple_exact_out, exact_in=False))
 
     # Pass the correctly structured tuple to execute_swap as well
     # receipt = execute_swap(account, params_tuple)

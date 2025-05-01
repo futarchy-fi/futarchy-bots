@@ -131,6 +131,11 @@ class TenderlyAPIClient:
         url = f"{self.BASE_API_URL}/account/{self.account_slug}/project/{self.project_slug}/simulate"
         payload = transaction
         print(f"Sending single simulation to {url}")
+
+        print("--- Tenderly Payload ---")
+        print(json.dumps(payload, indent=2)) # Print the payload being sent
+        print("------------------------")
+
         return self._post_request(url, payload, timeout)
 
 
