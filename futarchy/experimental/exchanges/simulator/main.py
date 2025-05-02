@@ -14,10 +14,11 @@ token_no_out  = w3.to_checksum_address(os.environ["SWAPR_SDAI_NO_ADDRESS"])
 # --- Futarchy splitPosition parameters ---------------------------------------
 router_addr     = w3.to_checksum_address(os.environ["FUTARCHY_ROUTER_ADDRESS"])
 proposal_addr   = w3.to_checksum_address(os.environ["FUTARCHY_PROPOSAL_ADDRESS"])
-collateral_addr = w3.to_checksum_address(os.environ["COLLATERAL_TOKEN_ADDRESS"])
+collateral_addr = w3.to_checksum_address(os.environ["GNO_TOKEN_ADDRESS"])
 
 # Adjust collateral amount to split as needed (currently hard-coded to 1 ether)
-split_amount_wei = w3.to_wei(Decimal("1"), "ether")
+
+amount_in_wei     = w3.to_wei(Decimal("0.01853"), "ether")
 
 # Build the splitPosition tx dict (to be simulated by Tenderly)
 split_tx = build_split_tx(
@@ -26,12 +27,11 @@ split_tx = build_split_tx(
     router_addr,
     proposal_addr,
     collateral_addr,
-    split_amount_wei,
+    amount_in_wei,
     acct.address,
 )
 
 deadline          = int(time.time()) + 600
-amount_in_wei     = w3.to_wei(Decimal("0.001"), "ether")
 amount_in_max     = int(amount_in_wei * 1.2)
 amount_out_expected = int(amount_in_wei * 81)
 amount_out_min    = int(amount_out_expected * 0.9)
@@ -59,7 +59,7 @@ result = client.simulate(bundle)
 # --- Simple parsing of simulation results ---
 if result and result.get("simulation_results"):
     sims = result["simulation_results"]
-    param_list = [params_in, params_out]
+    param_list = [params_yes_in, params_no_in]
 
     for idx, swap_result in enumerate(sims):
         print(f"\n--- Simulation Result #{idx+1} ---")
