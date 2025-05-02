@@ -6,8 +6,10 @@ from .helpers.split_position import build_split_tx
 
 acct = Account.from_key(os.environ["PRIVATE_KEY"])
 
-token_in  = w3.to_checksum_address(os.environ["SWAPR_GNO_YES_ADDRESS"])
-token_out = w3.to_checksum_address(os.environ["SWAPR_SDAI_YES_ADDRESS"])
+token_yes_in  = w3.to_checksum_address(os.environ["SWAPR_GNO_YES_ADDRESS"])
+token_yes_out = w3.to_checksum_address(os.environ["SWAPR_SDAI_YES_ADDRESS"])
+token_no_in   = w3.to_checksum_address(os.environ["SWAPR_GNO_NO_ADDRESS"])
+token_no_out  = w3.to_checksum_address(os.environ["SWAPR_SDAI_NO_ADDRESS"])
 
 # --- Futarchy splitPosition parameters ---------------------------------------
 router_addr     = w3.to_checksum_address(os.environ["FUTARCHY_ROUTER_ADDRESS"])
@@ -35,16 +37,18 @@ amount_out_expected = int(amount_in_wei * 81)
 amount_out_min    = int(amount_out_expected * 0.9)
 sqrt_price_limit  = 0
 
-params_in  = (token_in, token_out, acct.address, deadline, amount_in_wei,
+params_yes_in  = (token_yes_in, token_yes_out, acct.address, deadline, amount_in_wei,
               amount_out_min, sqrt_price_limit)
-params_out = (token_in, token_out, 500, acct.address, deadline,
+params_no_in   = (token_no_in, token_no_out, acct.address, deadline, amount_in_wei,
+              amount_out_min, sqrt_price_limit)
+params_out = (token_yes_in, token_yes_out, 500, acct.address, deadline,
               amount_out_expected, amount_in_max, sqrt_price_limit)
 
 # Final bundle – run splitPosition first, then the two Swapr swaps
 bundle = [
     split_tx,
-    tx_exact_in(params_in,  acct.address),
-    tx_exact_out(params_out, acct.address),
+    tx_exact_in(params_yes_in, acct.address),
+    tx_exact_in(params_no_in, acct.address),
 ]
 
 print(f"--- Prepared Bundle ---")
@@ -90,9 +94,9 @@ if result and result.get("simulation_results"):
             else:
                 amount_in_wei_local = amount_in_wei  # fallback
 
-            print("  Simulated amountOut:", w3.from_wei(amount_out_wei, "ether"), token_out)
+            print("  Simulated amountOut:", w3.from_wei(amount_out_wei, "ether"), token_yes_out)
             price = Decimal(w3.from_wei(amount_out_wei, "ether")) / Decimal(w3.from_wei(amount_in_wei_local, "ether"))
-            print("  Simulated price:", price, f"{token_out}/{token_in}")
+            print("  Simulated price:", price, f"{token_yes_out}/{token_yes_in}")
         else:
             print("  No output data returned from simulation.")
 else:
