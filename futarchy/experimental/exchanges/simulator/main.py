@@ -33,7 +33,7 @@ split_tx = build_split_tx(
 
 deadline          = int(time.time()) + 600
 amount_in_max     = int(amount_in_wei * 1.2)
-amount_out_expected = int(amount_in_wei * 81)
+amount_out_expected = int(amount_in_wei / 100)
 amount_out_min    = int(amount_out_expected * 0.9)
 sqrt_price_limit  = 0
 
