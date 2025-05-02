@@ -6,15 +6,15 @@ from .helpers.split_position import build_split_tx
 
 acct = Account.from_key(os.environ["PRIVATE_KEY"])
 
-token_yes_in  = w3.to_checksum_address(os.environ["SWAPR_GNO_YES_ADDRESS"])
-token_yes_out = w3.to_checksum_address(os.environ["SWAPR_SDAI_YES_ADDRESS"])
-token_no_in   = w3.to_checksum_address(os.environ["SWAPR_GNO_NO_ADDRESS"])
-token_no_out  = w3.to_checksum_address(os.environ["SWAPR_SDAI_NO_ADDRESS"])
+token_yes_in  = w3.to_checksum_address(os.environ["SWAPR_SDAI_YES_ADDRESS"])
+token_yes_out = w3.to_checksum_address(os.environ["SWAPR_GNO_YES_ADDRESS"])
+token_no_in   = w3.to_checksum_address(os.environ["SWAPR_SDAI_NO_ADDRESS"])
+token_no_out  = w3.to_checksum_address(os.environ["SWAPR_GNO_NO_ADDRESS"])
 
 # --- Futarchy splitPosition parameters ---------------------------------------
 router_addr     = w3.to_checksum_address(os.environ["FUTARCHY_ROUTER_ADDRESS"])
 proposal_addr   = w3.to_checksum_address(os.environ["FUTARCHY_PROPOSAL_ADDRESS"])
-collateral_addr = w3.to_checksum_address(os.environ["GNO_TOKEN_ADDRESS"])
+collateral_addr = w3.to_checksum_address(os.environ["SDAI_TOKEN_ADDRESS"])
 
 # Adjust collateral amount to split as needed (currently hard-coded to 1 ether)
 def get_gno_yes_and_no_amounts_from_sdai(amount):
