@@ -17,7 +17,7 @@ proposal_addr   = w3.to_checksum_address(os.environ["FUTARCHY_PROPOSAL_ADDRESS"]
 collateral_addr = w3.to_checksum_address(os.environ["SDAI_TOKEN_ADDRESS"])
 
 # Adjust collateral amount to split as needed (currently hard-coded to 1 ether)
-def get_gno_yes_and_no_amounts_from_sdai(amount, amount_out_expected=100):
+def get_gno_yes_and_no_amounts_from_sdai(amount, price=100):
     amount_in_wei     = w3.to_wei(Decimal(amount), "ether")
 
     # Build the splitPosition tx dict (to be simulated by Tenderly)
@@ -33,7 +33,7 @@ def get_gno_yes_and_no_amounts_from_sdai(amount, amount_out_expected=100):
 
     deadline          = int(time.time()) + 600
     amount_in_max     = int(amount_in_wei * 1.2)
-    amount_out_expected = int(amount_in_wei / amount_out_expected)
+    amount_out_expected = int(amount_in_wei / price)
     amount_out_min    = int(amount_out_expected * 0.9)
     sqrt_price_limit  = 0
 
