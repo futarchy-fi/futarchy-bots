@@ -2,11 +2,31 @@ import os, time
 from decimal import Decimal
 from eth_account import Account
 from .swapr_swap import w3, client, tx_exact_in, tx_exact_out
+from .helpers.split_position import build_split_tx
 
 acct = Account.from_key(os.environ["PRIVATE_KEY"])
 
 token_in  = w3.to_checksum_address(os.environ["SWAPR_GNO_YES_ADDRESS"])
 token_out = w3.to_checksum_address(os.environ["SWAPR_SDAI_YES_ADDRESS"])
+
+# --- Futarchy splitPosition parameters ---------------------------------------
+router_addr     = w3.to_checksum_address(os.environ["FUTARCHY_ROUTER_ADDRESS"])
+proposal_addr   = w3.to_checksum_address(os.environ["FUTARCHY_PROPOSAL_ADDRESS"])
+collateral_addr = w3.to_checksum_address(os.environ["COLLATERAL_TOKEN_ADDRESS"])
+
+# Adjust collateral amount to split as needed (currently hard-coded to 1 ether)
+split_amount_wei = w3.to_wei(Decimal("1"), "ether")
+
+# Build the splitPosition tx dict (to be simulated by Tenderly)
+split_tx = build_split_tx(
+    w3,
+    client,
+    router_addr,
+    proposal_addr,
+    collateral_addr,
+    split_amount_wei,
+    acct.address,
+)
 
 deadline          = int(time.time()) + 600
 amount_in_wei     = w3.to_wei(Decimal("0.001"), "ether")
@@ -20,7 +40,9 @@ params_in  = (token_in, token_out, acct.address, deadline, amount_in_wei,
 params_out = (token_in, token_out, 500, acct.address, deadline,
               amount_out_expected, amount_in_max, sqrt_price_limit)
 
+# Final bundle – run splitPosition first, then the two Swapr swaps
 bundle = [
+    split_tx,
     tx_exact_in(params_in,  acct.address),
     tx_exact_out(params_out, acct.address),
 ]
