@@ -112,7 +112,6 @@ def get_gno_yes_and_no_amounts_from_sdai(amount):
         print("Simulation failed or returned no results.")
 
     # Return simulated output amounts for GNO-YES and GNO-NO swaps
-    print("(amount_out_yes_wei, amount_out_no_wei) = ", (amount_out_yes_wei, amount_out_no_wei))
     
     return (w3.from_wei(amount_out_yes_wei, "ether"), w3.from_wei(amount_out_no_wei, "ether"))
 
@@ -122,4 +121,5 @@ if __name__ == "__main__":
         print("Usage: python -m futarchy.experimental.exchanges.simulator.simulator <amount>")
         sys.exit(1)
     amount = float(sys.argv[1])
-    get_gno_yes_and_no_amounts_from_sdai(amount)
+    (amount_out_yes_wei, amount_out_no_wei) = get_gno_yes_and_no_amounts_from_sdai(amount)
+    print("(amount_out_yes_wei, amount_out_no_wei) = ", (amount_out_yes_wei, amount_out_no_wei))
