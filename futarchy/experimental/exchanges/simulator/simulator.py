@@ -16,9 +16,46 @@ router_addr     = w3.to_checksum_address(os.environ["FUTARCHY_ROUTER_ADDRESS"])
 proposal_addr   = w3.to_checksum_address(os.environ["FUTARCHY_PROPOSAL_ADDRESS"])
 collateral_addr = w3.to_checksum_address(os.environ["SDAI_TOKEN_ADDRESS"])
 
+def build_step_1_swap_txs(split_amount_in_wei, gno_amount_in_wei, price=100):
+    if gno_amount_in_wei is None:
+        deadline          = int(time.time()) + 600
+        amount_in_max     = int(split_amount_in_wei * 1.2)
+        amount_out_expected = int(split_amount_in_wei / price)
+        amount_out_min    = int(amount_out_expected * 0.9)
+        sqrt_price_limit  = 0
+
+        params_yes_in  = (token_yes_in, token_yes_out, acct.address, deadline, split_amount_in_wei,
+                    amount_out_min, sqrt_price_limit)
+        params_no_in   = (token_no_in, token_no_out, acct.address, deadline, split_amount_in_wei,
+                    amount_out_min, sqrt_price_limit)
+        return [
+            tx_exact_in(params_yes_in, acct.address),
+            tx_exact_in(params_no_in, acct.address),
+        ]
+    else:
+        deadline          = int(time.time()) + 600
+        amount_in_max     = int(split_amount_in_wei * 1.2)
+        amount_out_expected = gno_amount_in_wei
+        amount_out_min    = int(amount_out_expected * 0.9)
+        sqrt_price_limit  = 0
+
+        params_yes_out = (token_yes_in, token_yes_out, 500, acct.address, deadline,
+                amount_out_expected, amount_in_max, sqrt_price_limit)
+
+        params_no_out   = (token_no_in, token_no_out, 500, acct.address, deadline, amount_out_expected,
+                amount_in_max, sqrt_price_limit)
+        return [
+            tx_exact_out(params_yes_out, acct.address),
+            tx_exact_out(params_no_out, acct.address),
+        ]
+
 # Adjust collateral amount to split as needed (currently hard-coded to 1 ether)
-def get_gno_yes_and_no_amounts_from_sdai(amount, price=100):
-    amount_in_wei     = w3.to_wei(Decimal(amount), "ether")
+def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, price=100):
+    split_amount_in_wei     = w3.to_wei(Decimal(split_amount), "ether")
+    if gno_amount is not None:
+        gno_amount_in_wei       = w3.to_wei(Decimal(gno_amount), "ether")
+    else:
+        gno_amount_in_wei       = None
 
     # Build the splitPosition tx dict (to be simulated by Tenderly)
     split_tx = build_split_tx(
@@ -27,29 +64,25 @@ def get_gno_yes_and_no_amounts_from_sdai(amount, price=100):
         router_addr,
         proposal_addr,
         collateral_addr,
-        amount_in_wei,
+        split_amount_in_wei,
         acct.address,
     )
 
     deadline          = int(time.time()) + 600
-    amount_in_max     = int(amount_in_wei * 1.2)
-    amount_out_expected = int(amount_in_wei / price)
+    amount_in_max     = int(split_amount_in_wei * 1.2)
+    amount_out_expected = int(split_amount_in_wei / price)
     amount_out_min    = int(amount_out_expected * 0.9)
     sqrt_price_limit  = 0
 
-    params_yes_in  = (token_yes_in, token_yes_out, acct.address, deadline, amount_in_wei,
+    params_yes_in  = (token_yes_in, token_yes_out, acct.address, deadline, split_amount_in_wei,
                 amount_out_min, sqrt_price_limit)
-    params_no_in   = (token_no_in, token_no_out, acct.address, deadline, amount_in_wei,
+    params_no_in   = (token_no_in, token_no_out, acct.address, deadline, split_amount_in_wei,
                 amount_out_min, sqrt_price_limit)
-    params_out = (token_yes_in, token_yes_out, 500, acct.address, deadline,
-                amount_out_expected, amount_in_max, sqrt_price_limit)
 
     # Final bundle – run splitPosition first, then the two Swapr swaps
     bundle = [
         split_tx,
-        tx_exact_in(params_yes_in, acct.address),
-        tx_exact_in(params_no_in, acct.address),
-    ]
+    ] + build_step_1_swap_txs(split_amount_in_wei, gno_amount_in_wei, price)
 
     print(f"--- Prepared Bundle ---")
     print(bundle)
@@ -101,7 +134,7 @@ def get_gno_yes_and_no_amounts_from_sdai(amount, price=100):
                 if idx < len(param_list):
                     amount_in_wei_local = param_list[idx][4]
                 else:
-                    amount_in_wei_local = amount_in_wei  # fallback
+                    amount_in_wei_local = split_amount_in_wei  # fallback
 
                 print("  Simulated amountOut:", w3.from_wei(amount_out_wei, "ether"), token_yes_out)
                 price = Decimal(w3.from_wei(amount_out_wei, "ether")) / Decimal(w3.from_wei(amount_in_wei_local, "ether"))
@@ -113,13 +146,15 @@ def get_gno_yes_and_no_amounts_from_sdai(amount, price=100):
 
     # Return simulated output amounts for GNO-YES and GNO-NO swaps
     
-    return (w3.from_wei(amount_out_yes_wei, "ether"), w3.from_wei(amount_out_no_wei, "ether"))
+    return {"amount_out_yes": w3.from_wei(amount_out_yes_wei, "ether"), "amount_out_no": w3.from_wei(amount_out_no_wei, "ether")} 
 
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) < 2:
-        print("Usage: python -m futarchy.experimental.exchanges.simulator.simulator <amount>")
+    if len(sys.argv) < 3:
+        print("Usage: python -m futarchy.experimental.exchanges.simulator.simulator <amount> <gno_amount>")
         sys.exit(1)
     amount = float(sys.argv[1])
-    (amount_out_yes_wei, amount_out_no_wei) = get_gno_yes_and_no_amounts_from_sdai(amount)
-    print("(amount_out_yes_wei, amount_out_no_wei) = ", (amount_out_yes_wei, amount_out_no_wei))
+    gno_amount = float(sys.argv[2])
+    result = get_gno_yes_and_no_amounts_from_sdai(amount, gno_amount)
+    print("(amount_out_yes, amount_out_no) = ", (result["amount_out_yes"], result["amount_out_no"]))
+# python -m futarchy.experimental.exchanges.simulator.simulator <amount> <gno_amount>
