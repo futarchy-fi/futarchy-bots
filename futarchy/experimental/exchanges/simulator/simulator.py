@@ -3,6 +3,7 @@ from decimal import Decimal
 from eth_account import Account
 from .swapr_swap import w3, client, tx_exact_in, tx_exact_out
 from .helpers.split_position import build_split_tx
+from .helpers.merge_position import build_merge_tx
 
 acct = Account.from_key(os.environ["PRIVATE_KEY"])
 
@@ -15,6 +16,7 @@ token_no_out  = w3.to_checksum_address(os.environ["SWAPR_GNO_NO_ADDRESS"])
 router_addr     = w3.to_checksum_address(os.environ["FUTARCHY_ROUTER_ADDRESS"])
 proposal_addr   = w3.to_checksum_address(os.environ["FUTARCHY_PROPOSAL_ADDRESS"])
 collateral_addr = w3.to_checksum_address(os.environ["SDAI_TOKEN_ADDRESS"])
+gno_collateral_addr = w3.to_checksum_address(os.environ["GNO_TOKEN_ADDRESS"])
 
 def build_step_1_swap_txs(split_amount_in_wei, gno_amount_in_wei, price=100):
     if gno_amount_in_wei is None:
@@ -48,6 +50,18 @@ def build_step_1_swap_txs(split_amount_in_wei, gno_amount_in_wei, price=100):
             tx_exact_out(params_yes_out, acct.address),
             tx_exact_out(params_no_out, acct.address),
         ]
+
+def build_step_2_merge_tx(gno_amount_in_wei):
+    """Return Tenderly transaction dict for FutarchyRouter.mergePositions."""
+    return build_merge_tx(
+        w3,
+        client,
+        router_addr,
+        proposal_addr,
+        gno_collateral_addr,
+        int(gno_amount_in_wei),
+        acct.address,
+    )
 
 # Adjust collateral amount to split as needed (currently hard-coded to 1 ether)
 def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, price=100):
