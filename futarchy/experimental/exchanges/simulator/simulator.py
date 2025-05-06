@@ -183,85 +183,80 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, price=10
     amount_out_yes_wei = None  # From second simulation (GNO-YES -> sDAI-YES)
     amount_out_no_wei = None  # From third simulation (GNO-NO  -> sDAI-NO)
 
-    # --- Simple parsing of simulation results ---
+    # --- Structured parsing of simulation results ---------------------------------
     if result and result.get("simulation_results"):
         sims = result["simulation_results"]
-        param_list = [params_yes_in, params_no_in]
 
-        for idx, swap_result in enumerate(sims):
-            print(f"\n--- Simulation Result #{idx+1} ---")
+        def handle_split(idx, sim):
+            print("SplitPosition tx parsed – nothing to extract.")
 
-            if swap_result.get("error"):
-                print(
-                    "Tenderly simulation error:",
-                    swap_result["error"].get("message", "Unknown error"),
-                )
-                print("Full error details:", swap_result["error"])
+        def handle_yes_swap(idx, sim):
+            nonlocal amount_out_yes_wei
+            extracted = extract_amount_in(sim, params_yes_in[4])
+            if extracted is not None:
+                amount_out_yes_wei = extracted
+
+        def handle_no_swap(idx, sim):
+            nonlocal amount_out_no_wei
+            extracted = extract_amount_in(sim, params_no_in[4])
+            if extracted is not None:
+                amount_out_no_wei = extracted
+
+        def handle_merge(idx, sim):
+            print("MergePositions tx parsed – nothing to extract.")
+
+        def handle_balancer(idx, sim):
+            parse_swap_results([sim], w3)
+
+        # Helper to decode uint256 output and pretty print
+        def extract_amount_in(sim, amount_in_wei_local):
+            tx = sim.get("transaction", {})
+            call_trace = tx.get("transaction_info", {}).get("call_trace", {})
+            output_hex = call_trace.get("output")
+            if output_hex and output_hex != "0x":
+                try:
+                    amt_in = int(output_hex, 16)
+                except ValueError:
+                    return None
+                human = w3.from_wei(amt_in, "ether")
+                print("  Simulated amountIn:", human)
+                price = Decimal(human) / Decimal(w3.from_wei(amount_in_wei_local, "ether"))
+                print("  Simulated price:", price)
+                return amt_in
+            print("  No output data returned from simulation.")
+            return None
+
+        # Index -> handler mapping; positions depend on bundle construction order
+        handlers = {
+            0: handle_split,
+            1: handle_yes_swap,
+            2: handle_no_swap,
+            3: handle_merge,
+            len(sims) - 1: handle_balancer,  # last tx is Balancer swap
+        }
+
+        for idx, sim in enumerate(sims):
+            print(f"\n--- Simulation Result #{idx + 1} ---")
+            if sim.get("error"):
+                print("Tenderly simulation error:", sim["error"].get("message", "Unknown error"))
                 continue
-
-            tx = swap_result.get("transaction")
+            tx = sim.get("transaction")
             if not tx:
                 print("No transaction data in result.")
                 continue
-
             if tx.get("status") is False:
-                tx_info = tx.get("transaction_info", {})
-                print("Swap transaction REVERTED.")
-                print(
-                    "  Revert reason:",
-                    tx_info.get("error_message", tx_info.get("revert_reason", "N/A")),
-                )
+                print("Transaction REVERTED.")
                 continue
-
-            # Successful transaction
             print("Swap transaction did NOT revert.")
-
-            # If this is the Balancer swap (last tx of bundle when gno swap present),
-            # delegate to the dedicated parser for clearer output and skip quantity extraction.
-            if gno_to_sdai_txs and idx == len(sims) - 1:
-                parse_swap_results([swap_result], w3)
-                continue
-
-            tx_info = tx.get("transaction_info", {})
-            call_trace = tx_info.get("call_trace", {})
-            output_hex = call_trace.get("output")
-
-            # We only care about the two Swapr swaps that have uint256 output (YES and NO)
-            if idx < len(param_list) and output_hex and output_hex != "0x":
-                try:
-                    amount_out_wei = int(output_hex, 16)
-                except ValueError:
-                    amount_out_wei = None
-
-                if amount_out_wei:
-                    # Store outputs
-                    if idx == 0:
-                        amount_out_yes_wei = amount_out_wei
-                    elif idx == 1:
-                        amount_out_no_wei = amount_out_wei
-
-                    amount_in_wei_local = param_list[idx][4]
-                    print(
-                        "  Simulated amountOut:",
-                        w3.from_wei(amount_out_wei, "ether"),
-                        token_yes_out if idx == 0 else token_no_out,
-                    )
-                    price = Decimal(w3.from_wei(amount_out_wei, "ether")) / Decimal(
-                        w3.from_wei(amount_in_wei_local, "ether")
-                    )
-                    print("  Simulated price:", price)
-                else:
-                    print("  No output data returned from simulation.")
-            else:
-                print("  Output not parsed for this tx.")
+            # Dispatch to handler
+            handlers.get(idx, lambda *_: print("No handler for this tx."))(idx, sim)
     else:
         print("Simulation failed or returned no results.")
 
     # Return simulated output amounts for GNO-YES and GNO-NO swaps
-
     return {
-        "amount_out_yes": w3.from_wei(amount_out_yes_wei, "ether"),
-        "amount_out_no": w3.from_wei(amount_out_no_wei, "ether"),
+        "amount_out_yes": w3.from_wei(amount_out_yes_wei, "ether") if amount_out_yes_wei else None,
+        "amount_out_no": w3.from_wei(amount_out_no_wei, "ether") if amount_out_no_wei else None,
     }
 
 
