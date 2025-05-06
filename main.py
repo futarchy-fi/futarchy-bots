@@ -12,9 +12,8 @@ import argparse
 from decimal import Decimal
 import time
 import json
-from web3 import Web3
-from dotenv import load_dotenv
-from futarchy.experimental.exchanges.sushiswap import SushiSwapExchange
+# SushiSwap functionality is temporarily disabled; the class is stubbed.
+# from futarchy.experimental.exchanges.sushiswap import SushiSwapExchange
 from futarchy.experimental.exchanges.passthrough_router import PassthroughRouter
 from futarchy.experimental.config.constants import (
     CONTRACT_ADDRESSES,
@@ -32,6 +31,8 @@ from futarchy.experimental.config.constants import (
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 import math
+from web3 import Web3
+from dotenv import load_dotenv
 
 # Add the current directory to the path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))

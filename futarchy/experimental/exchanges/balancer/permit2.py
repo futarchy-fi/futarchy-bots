@@ -6,9 +6,17 @@ This module provides functionality to check and create Permit2 authorizations.
 from web3 import Web3
 import json
 import os
-from eth_account.messages import encode_typed_data
 from hexbytes import HexBytes
 from config.constants import CONTRACT_ADDRESSES
+
+# eth-account >=0.7 renamed encode_typed_data -> encode_structured_data
+# Provide a compatibility shim so the rest of the code can stay unchanged.
+try:
+    # eth-account <0.7
+    from eth_account.messages import encode_typed_data  # type: ignore
+except ImportError:  # pragma: no cover
+    # eth-account >=0.7
+    from eth_account.messages import encode_structured_data as encode_typed_data  # type: ignore
 
 class BalancerPermit2Handler:
     """Handler for Permit2 operations with Balancer."""
