@@ -4,6 +4,7 @@ from eth_account import Account
 from .swapr_swap import w3, client, tx_exact_in, tx_exact_out
 from .helpers.split_position import build_split_tx
 from .helpers.merge_position import build_merge_tx
+from .helpers.balancer_swap import build_sell_gno_to_sdai_swap_tx, parse_swap_results
 
 acct = Account.from_key(os.environ["PRIVATE_KEY"])
 
@@ -140,9 +141,22 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, price=10
         sqrt_price_limit,
     )
 
-    # Final bundle – run splitPosition first, then the two Swapr swaps
-    bundle = (
-        [
+    # If user supplied GNO to sell, build Balancer swap tx first
+    gno_to_sdai_txs = []
+    if gno_amount_in_wei:
+        # Require at least 1 wei out – caller can adjust price slippage externally
+        gno_to_sdai_txs.append(
+            build_sell_gno_to_sdai_swap_tx(
+                w3,
+                client,
+                gno_amount_in_wei,
+                1,  # minAmountOut = 1 wei (effectively no slippage protection)
+                acct.address,
+            )
+        )
+
+    # Final bundle – optionally sell GNO for sDAI first, then splitPosition, swaps, merge
+    bundle = ([
             split_tx,
         ]
         + build_step_1_swap_txs(split_amount_in_wei, gno_amount_in_wei, price)
@@ -153,10 +167,11 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, price=10
                 router_addr,
                 proposal_addr,
                 gno_collateral_addr,
-                int(gno_amount_in_wei),
+                int(gno_amount_in_wei) if gno_amount_in_wei else 0,
                 acct.address,
             )
         ]
+        + gno_to_sdai_txs
     )
 
     print(f"--- Prepared Bundle ---")
@@ -200,34 +215,45 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, price=10
 
             # Successful transaction
             print("Swap transaction did NOT revert.")
+
+            # If this is the Balancer swap (last tx of bundle when gno swap present),
+            # delegate to the dedicated parser for clearer output and skip quantity extraction.
+            if gno_to_sdai_txs and idx == len(sims) - 1:
+                parse_swap_results([swap_result], w3)
+                continue
+
             tx_info = tx.get("transaction_info", {})
             call_trace = tx_info.get("call_trace", {})
             output_hex = call_trace.get("output")
 
-            if output_hex and output_hex != "0x":
-                amount_out_wei = int(output_hex, 16)
-                # Store outputs from the 2nd and 3rd simulation results
-                if idx == 1:
-                    amount_out_yes_wei = amount_out_wei
-                elif idx == 2:
-                    amount_out_no_wei = amount_out_wei
-                # pick corresponding params tuple if available
-                if idx < len(param_list):
-                    amount_in_wei_local = param_list[idx][4]
-                else:
-                    amount_in_wei_local = split_amount_in_wei  # fallback
+            # We only care about the two Swapr swaps that have uint256 output (YES and NO)
+            if idx < len(param_list) and output_hex and output_hex != "0x":
+                try:
+                    amount_out_wei = int(output_hex, 16)
+                except ValueError:
+                    amount_out_wei = None
 
-                print(
-                    "  Simulated amountOut:",
-                    w3.from_wei(amount_out_wei, "ether"),
-                    token_yes_out,
-                )
-                price = Decimal(w3.from_wei(amount_out_wei, "ether")) / Decimal(
-                    w3.from_wei(amount_in_wei_local, "ether")
-                )
-                print("  Simulated price:", price, f"{token_yes_out}/{token_yes_in}")
+                if amount_out_wei:
+                    # Store outputs
+                    if idx == 0:
+                        amount_out_yes_wei = amount_out_wei
+                    elif idx == 1:
+                        amount_out_no_wei = amount_out_wei
+
+                    amount_in_wei_local = param_list[idx][4]
+                    print(
+                        "  Simulated amountOut:",
+                        w3.from_wei(amount_out_wei, "ether"),
+                        token_yes_out if idx == 0 else token_no_out,
+                    )
+                    price = Decimal(w3.from_wei(amount_out_wei, "ether")) / Decimal(
+                        w3.from_wei(amount_in_wei_local, "ether")
+                    )
+                    print("  Simulated price:", price)
+                else:
+                    print("  No output data returned from simulation.")
             else:
-                print("  No output data returned from simulation.")
+                print("  Output not parsed for this tx.")
     else:
         print("Simulation failed or returned no results.")
 
