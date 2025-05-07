@@ -139,94 +139,118 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
             )
         )
 
-    # Final bundle – optionally sell GNO for sDAI first, then splitPosition, swaps, merge
-    bundle = ([
-            split_tx,
-        ]
-        + build_step_1_swap_txs(split_amount_in_wei, gno_amount_in_wei, price)
-        + [
-            build_merge_tx(
-                w3,
-                client,
-                router_addr,
-                proposal_addr,
-                gno_collateral_addr,
-                int(gno_amount_in_wei) if gno_amount_in_wei else 0,
-                acct.address,
-            )
-        ]
-        + [build_liquidate_remaining_conditional_sdai_tx(liquidate_conditional_sdai_amount, True if liquidate_conditional_sdai_amount > 0 else False)]
-        + gno_to_sdai_txs
-    )
+    # ------------------------------------------------------------------
+    # 1️⃣  Define handlers FIRST so we can reference them in the steps list
+    # ------------------------------------------------------------------
 
-    print(f"--- Prepared Bundle ---")
+    def handle_split(idx, sim):
+        print("SplitPosition tx parsed – nothing to extract.")
+
+    def handle_yes_swap(idx, sim):
+        """Swap of GNO-YES → sDAI-YES (exact-in)."""
+        nonlocal amount_out_yes_wei
+        parse_swapr_results([sim], label="SwapR YES (exact-in)")
+        extracted = extract_amount_in(sim, split_amount_in_wei)
+        if extracted is not None:
+            amount_out_yes_wei = extracted
+
+    def handle_no_swap(idx, sim):
+        """Swap of GNO-NO → sDAI-NO (exact-in)."""
+        nonlocal amount_out_no_wei
+        parse_swapr_results([sim], label="SwapR NO  (exact-in)")
+        extracted = extract_amount_in(sim, split_amount_in_wei)
+        if extracted is not None:
+            amount_out_no_wei = extracted
+
+    def handle_merge(idx, sim):
+        print("MergePositions tx parsed – nothing to extract.")
+
+    def handle_liquidate(idx, sim):
+        parse_swapr_results([sim], label="SwapR Liquidate YES→sDAI (exact-in)")
+
+    def handle_balancer(idx, sim):
+        parse_swap_results([sim], w3)
+
+    # ------------------------------------------------------------------
+    # 2️⃣  Build the *steps* list declaratively: (tx_dict, handler) pairs
+    # ------------------------------------------------------------------
+
+    steps: list[tuple[dict, callable]] = []
+
+    # Split
+    steps.append((split_tx, handle_split))
+
+    # YES / NO swaps (2 txs)
+    yes_tx, no_tx = build_step_1_swap_txs(split_amount_in_wei, gno_amount_in_wei, price)
+    steps.append((yes_tx, handle_yes_swap))
+    steps.append((no_tx, handle_no_swap))
+
+    # Merge
+    merge_tx = build_merge_tx(
+        w3,
+        client,
+        router_addr,
+        proposal_addr,
+        gno_collateral_addr,
+        int(gno_amount_in_wei) if gno_amount_in_wei else 0,
+        acct.address,
+    )
+    steps.append((merge_tx, handle_merge))
+
+    # Optional liquidation swap
+    if liquidate_conditional_sdai_amount and liquidate_conditional_sdai_amount > 0:
+        liq_tx = build_liquidate_remaining_conditional_sdai_tx(
+            liquidate_conditional_sdai_amount, True
+        )
+        if liq_tx:
+            steps.append((liq_tx, handle_liquidate))
+
+    # Optional Balancer swap (sell GNO → sDAI) – may be empty
+    if gno_to_sdai_txs:
+        steps.append((gno_to_sdai_txs[0], handle_balancer))
+
+    # ------------------------------------------------------------------
+    # 3️⃣  Execute simulation + dispatch handlers
+    # ------------------------------------------------------------------
+
+    bundle = [tx for tx, _ in steps]
+
+    print("--- Prepared Bundle ---")
     print(bundle)
 
     result = client.simulate(bundle)
 
     # Initialize placeholders for the swap outputs we care about
-    amount_out_yes_wei = None  # From second simulation (GNO-YES -> sDAI-YES)
-    amount_out_no_wei = None  # From third simulation (GNO-NO  -> sDAI-NO)
+    amount_out_yes_wei = None  # From second simulation (GNO-YES → sDAI-YES)
+    amount_out_no_wei = None  # From third simulation (GNO-NO  → sDAI-NO)
 
-    # --- Structured parsing of simulation results ---------------------------------
+    # Helper to decode uint256 output and pretty print
+    def extract_amount_in(sim, amount_in_wei_local):
+        tx = sim.get("transaction", {})
+        call_trace = tx.get("transaction_info", {}).get("call_trace", {})
+        output_hex = call_trace.get("output")
+        if output_hex and output_hex != "0x":
+            try:
+                amt_in = int(output_hex, 16)
+            except ValueError:
+                return None
+            human = w3.from_wei(amt_in, "ether")
+            print("  Simulated amountIn:", human)
+            price = Decimal(human) / Decimal(w3.from_wei(amount_in_wei_local, "ether"))
+            print("  Simulated price:", price)
+            return amt_in
+        print("  No output data returned from simulation.")
+        return None
+
     if result and result.get("simulation_results"):
         sims = result["simulation_results"]
-
-        def handle_split(idx, sim):
-            print("SplitPosition tx parsed – nothing to extract.")
-
-        def handle_yes_swap(idx, sim):
-            nonlocal amount_out_yes_wei
-            parse_swapr_results([sim])
-            extracted = extract_amount_in(sim, split_amount_in_wei)
-            if extracted is not None:
-                amount_out_yes_wei = extracted
-
-        def handle_no_swap(idx, sim):
-            nonlocal amount_out_no_wei
-            parse_swapr_results([sim])
-            extracted = extract_amount_in(sim, split_amount_in_wei)
-            if extracted is not None:
-                amount_out_no_wei = extracted
-
-        def handle_merge(idx, sim):
-            print("MergePositions tx parsed – nothing to extract.")
-
-        def handle_balancer(idx, sim):
-            parse_swap_results([sim], w3)
-
-        # Helper to decode uint256 output and pretty print
-        def extract_amount_in(sim, amount_in_wei_local):
-            tx = sim.get("transaction", {})
-            call_trace = tx.get("transaction_info", {}).get("call_trace", {})
-            output_hex = call_trace.get("output")
-            if output_hex and output_hex != "0x":
-                try:
-                    amt_in = int(output_hex, 16)
-                except ValueError:
-                    return None
-                human = w3.from_wei(amt_in, "ether")
-                print("  Simulated amountIn:", human)
-                price = Decimal(human) / Decimal(w3.from_wei(amount_in_wei_local, "ether"))
-                print("  Simulated price:", price)
-                return amt_in
-            print("  No output data returned from simulation.")
-            return None
-
-        # Index -> handler mapping; positions depend on bundle construction order
-        handlers = {
-            0: handle_split,
-            1: handle_yes_swap,
-            2: handle_no_swap,
-            3: handle_merge,
-            len(sims) - 1: handle_balancer,  # last tx is Balancer swap
-        }
 
         for idx, sim in enumerate(sims):
             print(f"\n--- Simulation Result #{idx + 1} ---")
             if sim.get("error"):
                 print("Tenderly simulation error:", sim["error"].get("message", "Unknown error"))
                 continue
+
             tx = sim.get("transaction")
             if not tx:
                 print("No transaction data in result.")
@@ -235,8 +259,13 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
                 print("Transaction REVERTED.")
                 continue
             print("Swap transaction did NOT revert.")
-            # Dispatch to handler
-            handlers.get(idx, lambda *_: print("No handler for this tx."))(idx, sim)
+
+            # Call paired handler for this step
+            if idx < len(steps):
+                _, handler = steps[idx]
+                handler(idx, sim)
+            else:
+                print("No handler defined for this tx.")
     else:
         print("Simulation failed or returned no results.")
 

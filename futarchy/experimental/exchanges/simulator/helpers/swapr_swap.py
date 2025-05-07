@@ -148,15 +148,23 @@ def _wei_to_eth(value: int) -> Decimal:
     return Decimal(Web3.from_wei(value, "ether"))
 
 
-def parse_swap_results(results: List[Dict[str, Any]], w3_inst: Optional[Web3] = None) -> None:
+def parse_swap_results(
+    results: List[Dict[str, Any]],
+    w3_inst: Optional[Web3] = None,
+    label: Optional[str] = None,
+) -> None:
     """Pretty-print Tenderly simulation results (compatible with balancer helper)."""
 
     w3_local = w3_inst or w3
     for idx, sim in enumerate(results):
-        if len(results) == 1:
-            print(f"\n--- SwapR Simulation Result ---")
+        if label:
+            header = label
+        elif len(results) == 1:
+            header = "SwapR Simulation Result"
         else:
-            print(f"\n--- SwapR Simulation Result #{idx + 1} ---")
+            header = f"SwapR Simulation Result #{idx + 1}"
+
+        print(f"\n--- {header} ---")
 
         if sim.get("error"):
             print("Tenderly simulation error:", sim["error"].get("message", "Unknown error"))
