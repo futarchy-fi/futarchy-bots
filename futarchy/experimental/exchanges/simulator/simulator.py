@@ -72,8 +72,36 @@ def build_step_2_merge_tx(gno_amount_in_wei):
     )
 
 
+# --------------------------------------------------------------------------- #
+# Simple helper: liquidate conditional sDAI (YES) back to plain sDAI          #
+# --------------------------------------------------------------------------- #
+
+def build_liquidate_remaining_conditional_sdai_tx(amount: float, is_yes: bool):
+    """Return Tenderly tx dict swapping sDAI-Yes → sDAI via SwapR exact-in.
+
+    If *is_yes* is False, this is a no-op and returns ``None``.
+    """
+    if not is_yes:
+        return None
+
+    amount_in_wei = w3.to_wei(Decimal(amount), "ether")
+    min_amount_out_wei = 1  # minimal out to avoid reverting on 0
+
+    in_token = w3.to_checksum_address(os.environ["SWAPR_SDAI_YES_ADDRESS"])
+    out_token = w3.to_checksum_address(os.environ["SDAI_TOKEN_ADDRESS"])
+
+    return build_exact_in_tx(
+        in_token,
+        out_token,
+        amount_in_wei,
+        int(amount_in_wei * 0.1),
+        acct.address,
+        sqrt_price_limit=0,
+    )
+
+
 # Adjust collateral amount to split as needed (currently hard-coded to 1 ether)
-def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, price=100):
+def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidate_conditional_sdai_amount=None, price=100):
     split_amount_in_wei = w3.to_wei(Decimal(split_amount), "ether")
     if gno_amount is not None:
         gno_amount_in_wei = w3.to_wei(Decimal(gno_amount), "ether")
@@ -127,6 +155,7 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, price=10
                 acct.address,
             )
         ]
+        + [build_liquidate_remaining_conditional_sdai_tx(liquidate_conditional_sdai_amount, True if liquidate_conditional_sdai_amount > 0 else False)]
         + gno_to_sdai_txs
     )
 
@@ -221,16 +250,17 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, price=10
 if __name__ == "__main__":
     import sys
 
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 4:
         print(
-            "Usage: python -m futarchy.experimental.exchanges.simulator.simulator <amount> <gno_amount>"
+            "Usage: python -m futarchy.experimental.exchanges.simulator.simulator <amount> <gno_amount> <liquidate_conditional_sdai_amount>"
         )
         sys.exit(1)
     amount = float(sys.argv[1])
     gno_amount = float(sys.argv[2])
-    result = get_gno_yes_and_no_amounts_from_sdai(amount, gno_amount)
+    liquidate_conditional_sdai_amount = float(sys.argv[3])
+    result = get_gno_yes_and_no_amounts_from_sdai(amount, gno_amount, liquidate_conditional_sdai_amount)
     print(
         "(amount_out_yes, amount_out_no) = ",
         (result["amount_out_yes"], result["amount_out_no"]),
     )
-# python -m futarchy.experimental.exchanges.simulator.simulator <amount> <gno_amount>
+# python -m futarchy.experimental.exchanges.simulator.simulator <amount> <gno_amount> <liquidate_conditional_sdai_amount>
