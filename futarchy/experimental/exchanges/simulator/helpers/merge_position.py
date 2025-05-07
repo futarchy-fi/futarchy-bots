@@ -39,7 +39,7 @@ from decimal import Decimal
 from web3 import Web3
 
 from futarchy.experimental.config.abis.futarchy import FUTARCHY_ROUTER_ABI
-from ..tenderly_api import TenderlyClient
+from .tenderly_api import TenderlyClient
 
 __all__ = [
     "build_merge_tx",

@@ -1,7 +1,13 @@
 import os, time
 from decimal import Decimal
 from eth_account import Account
-from .swapr_swap import w3, client, tx_exact_in, tx_exact_out
+from .helpers.swapr_swap import (
+    w3,
+    client,
+    build_exact_in_tx,
+    build_exact_out_tx,
+    parse_swap_results as parse_swapr_results,
+)
 from .helpers.split_position import build_split_tx
 from .helpers.merge_position import build_merge_tx
 from .helpers.balancer_swap import build_sell_gno_to_sdai_swap_tx, parse_swap_results
@@ -28,27 +34,13 @@ def build_step_1_swap_txs(split_amount_in_wei, gno_amount_in_wei, price=100):
         amount_out_min = int(amount_out_expected * 0.9)
         sqrt_price_limit = 0
 
-        params_yes_in = (
-            token_yes_in,
-            token_yes_out,
-            acct.address,
-            deadline,
-            split_amount_in_wei,
-            amount_out_min,
-            sqrt_price_limit,
-        )
-        params_no_in = (
-            token_no_in,
-            token_no_out,
-            acct.address,
-            deadline,
-            split_amount_in_wei,
-            amount_out_min,
-            sqrt_price_limit,
-        )
         return [
-            tx_exact_in(params_yes_in, acct.address),
-            tx_exact_in(params_no_in, acct.address),
+            build_exact_in_tx(
+                token_yes_in, token_yes_out, split_amount_in_wei, amount_out_min, acct.address
+            ),
+            build_exact_in_tx(
+                token_no_in, token_no_out, split_amount_in_wei, amount_out_min, acct.address
+            ),
         ]
     else:
         deadline = int(time.time()) + 600
@@ -57,30 +49,13 @@ def build_step_1_swap_txs(split_amount_in_wei, gno_amount_in_wei, price=100):
         amount_out_min = int(amount_out_expected * 0.9)
         sqrt_price_limit = 0
 
-        params_yes_out = (
-            token_yes_in,
-            token_yes_out,
-            500,
-            acct.address,
-            deadline,
-            amount_out_expected,
-            amount_in_max,
-            sqrt_price_limit,
-        )
-
-        params_no_out = (
-            token_no_in,
-            token_no_out,
-            500,
-            acct.address,
-            deadline,
-            amount_out_expected,
-            amount_in_max,
-            sqrt_price_limit,
-        )
         return [
-            tx_exact_out(params_yes_out, acct.address),
-            tx_exact_out(params_no_out, acct.address),
+            build_exact_out_tx(
+                token_yes_in, token_yes_out, amount_out_expected, amount_in_max, acct.address
+            ),
+            build_exact_out_tx(
+                token_no_in, token_no_out, amount_out_expected, amount_in_max, acct.address
+            ),
         ]
 
 
@@ -121,25 +96,6 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, price=10
     amount_out_expected = int(split_amount_in_wei / price)
     amount_out_min = int(amount_out_expected * 0.9)
     sqrt_price_limit = 0
-
-    params_yes_in = (
-        token_yes_in,
-        token_yes_out,
-        acct.address,
-        deadline,
-        split_amount_in_wei,
-        amount_out_min,
-        sqrt_price_limit,
-    )
-    params_no_in = (
-        token_no_in,
-        token_no_out,
-        acct.address,
-        deadline,
-        split_amount_in_wei,
-        amount_out_min,
-        sqrt_price_limit,
-    )
 
     # If user supplied GNO to sell, build Balancer swap tx first
     gno_to_sdai_txs = []
@@ -192,13 +148,15 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, price=10
 
         def handle_yes_swap(idx, sim):
             nonlocal amount_out_yes_wei
-            extracted = extract_amount_in(sim, params_yes_in[4])
+            parse_swapr_results([sim])
+            extracted = extract_amount_in(sim, split_amount_in_wei)
             if extracted is not None:
                 amount_out_yes_wei = extracted
 
         def handle_no_swap(idx, sim):
             nonlocal amount_out_no_wei
-            extracted = extract_amount_in(sim, params_no_in[4])
+            parse_swapr_results([sim])
+            extracted = extract_amount_in(sim, split_amount_in_wei)
             if extracted is not None:
                 amount_out_no_wei = extracted
 

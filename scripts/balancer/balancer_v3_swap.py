@@ -162,7 +162,7 @@ try:
             print("\n3. Executing swap with existing approval...")
             
             # Set a longer deadline (1 hour from now) to ensure it doesn't expire
-            deadline = w3.eth.get_block('latest')['timestamp'] + (60 * 60)
+            deadline = w3.eth.get_block('latest')['timestamp'] + (10 * 60)
             debug_print(f"Setting deadline to: {deadline}")
             
             # Get the latest gas price and increase it

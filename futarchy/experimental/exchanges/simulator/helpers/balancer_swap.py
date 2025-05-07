@@ -44,7 +44,7 @@ from typing import Any, Dict, List, Optional
 from eth_typing import ChecksumAddress
 from web3 import Web3
 
-from ..tenderly_api import TenderlyClient
+from .tenderly_api import TenderlyClient
 
 # -----------------------------------------------------------------------------
 # Constants – update if the Balancer pool layout changes
@@ -220,7 +220,10 @@ def _wei_to_eth(value: int) -> Decimal:
 def parse_swap_results(results: List[Dict[str, Any]], w3: Web3) -> None:
     """Pretty-print each simulation result from the swapExactIn bundle."""
     for idx, sim in enumerate(results):
-        print(f"\n--- Balancer swap Simulation Result #{idx + 1} ---")
+        if len(results) == 1:
+            print(f"\n--- Balancer swap Simulation Result ---")
+        else:
+            print(f"\n--- Balancer swap Simulation Result #{idx + 1} ---")
 
         if sim.get("error"):
             print("Tenderly simulation error:", sim["error"].get("message", "Unknown error"))
