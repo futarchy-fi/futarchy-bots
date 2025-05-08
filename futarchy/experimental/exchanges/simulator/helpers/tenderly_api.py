@@ -31,11 +31,6 @@ class TenderlyClient:
             "value": value,
         }
 
-    def encode_exact_in(self, router, params):
-        return router.encodeABI(fn_name="exactInputSingle", args=[params])
-
-    def encode_exact_out(self, router, params):
-        return router.encodeABI(fn_name="exactOutputSingle", args=[params])
 
     # ---------- core ----------
 

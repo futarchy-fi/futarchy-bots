@@ -16,12 +16,12 @@ client = TenderlyClient(w3)
 
 
 def tx_exact_in(params, sender):
-    data = client.encode_exact_in(router, params)
+    data = router.encodeABI(fn_name="exactInputSingle", args=[params])
     return client.build_tx(router.address, data, sender)
 
 
 def tx_exact_out(params, sender):
-    data = client.encode_exact_out(router, params)
+    data = router.encodeABI(fn_name="exactOutputSingle", args=[params])
     return client.build_tx(router.address, data, sender)
 
 
@@ -49,45 +49,6 @@ def _deadline(seconds: int = 600) -> int:
     return int(time.time()) + seconds
 
 
-def _encode_exact_in(
-    token_in: str,
-    token_out: str,
-    sender: str,
-    amount_in_wei: int,
-    amount_out_min_wei: int,
-    sqrt_price_limit: int = 0,
-) -> str:
-    params: Tuple = (
-        w3.to_checksum_address(token_in),
-        w3.to_checksum_address(token_out),
-        w3.to_checksum_address(sender),
-        _deadline(),
-        int(amount_in_wei),
-        int(amount_out_min_wei),
-        int(sqrt_price_limit),
-    )
-    return client.encode_exact_in(router, params)
-
-
-def _encode_exact_out(
-    token_in: str,
-    token_out: str,
-    sender: str,
-    amount_out_wei: int,
-    amount_in_max_wei: int,
-    sqrt_price_limit: int = 0,
-) -> str:
-    params: Tuple = (
-        w3.to_checksum_address(token_in),
-        w3.to_checksum_address(token_out),
-        500,  # fee tier (SwapR uses 0.05% pools on Gnosis)
-        w3.to_checksum_address(sender),
-        _deadline(),
-        int(amount_out_wei),
-        int(amount_in_max_wei),
-        int(sqrt_price_limit),
-    )
-    return client.encode_exact_out(router, params)
 
 
 def build_exact_in_tx(
@@ -101,9 +62,16 @@ def build_exact_in_tx(
 ) -> Dict[str, Any]:
     """Return Tenderly-ready tx dict for exactInputSingle."""
 
-    data = _encode_exact_in(
-        token_in, token_out, sender, amount_in_wei, amount_out_min_wei, sqrt_price_limit
+    params = (
+        w3.to_checksum_address(token_in),
+        w3.to_checksum_address(token_out),
+        w3.to_checksum_address(sender),
+        _deadline(),
+        int(amount_in_wei),
+        int(amount_out_min_wei),
+        int(sqrt_price_limit),
     )
+    data = router.encodeABI(fn_name="exactInputSingle", args=[params])
     return client.build_tx(router.address, data, sender)
 
 
@@ -118,9 +86,17 @@ def build_exact_out_tx(
 ) -> Dict[str, Any]:
     """Return Tenderly-ready tx dict for exactOutputSingle."""
 
-    data = _encode_exact_out(
-        token_in, token_out, sender, amount_out_wei, amount_in_max_wei, sqrt_price_limit
+    params = (
+        w3.to_checksum_address(token_in),
+        w3.to_checksum_address(token_out),
+        500,  # 0.05 % fee pool
+        w3.to_checksum_address(sender),
+        _deadline(),
+        int(amount_out_wei),
+        int(amount_in_max_wei),
+        int(sqrt_price_limit),
     )
+    data = router.encodeABI(fn_name="exactOutputSingle", args=[params])
     return client.build_tx(router.address, data, sender)
 
 
