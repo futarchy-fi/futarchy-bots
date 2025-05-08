@@ -25,6 +25,33 @@ proposal_addr = w3.to_checksum_address(os.environ["FUTARCHY_PROPOSAL_ADDRESS"])
 collateral_addr = w3.to_checksum_address(os.environ["SDAI_TOKEN_ADDRESS"])
 gno_collateral_addr = w3.to_checksum_address(os.environ["GNO_TOKEN_ADDRESS"])
 
+def add_conditional_sdai_liquidation_steps(
+    liquidate_conditional_sdai_amount,
+    handle_liquidate,
+    handle_buy_sdai_yes,
+    handle_merge_conditional_sdai,
+):
+    """
+    Returns a list of (tx, handler) for conditional sDAI liquidation.
+    To be appended to the steps list.
+    """
+    steps = []
+    if liquidate_conditional_sdai_amount and liquidate_conditional_sdai_amount > 0:
+        liq_tx = build_liquidate_remaining_conditional_sdai_tx(
+            liquidate_conditional_sdai_amount, True
+        )
+        if liq_tx:
+            steps.append((liq_tx, handle_liquidate))
+    else:
+        liq_txs = build_liquidate_remaining_conditional_sdai_tx(
+            -liquidate_conditional_sdai_amount, False
+        )
+        if liq_txs:
+            steps += [
+                (liq_txs[0], handle_buy_sdai_yes),
+                (liq_txs[1], handle_merge_conditional_sdai),
+            ]
+    return steps
 
 def build_step_1_swap_txs(split_amount_in_wei, gno_amount_in_wei, price=100):
     if gno_amount_in_wei is None:
@@ -228,18 +255,12 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
     steps.append((merge_tx, handle_merge))
 
     # Optional liquidation swap
-    if liquidate_conditional_sdai_amount and liquidate_conditional_sdai_amount > 0:
-        liq_tx = build_liquidate_remaining_conditional_sdai_tx(
-            liquidate_conditional_sdai_amount, True
-        )
-        if liq_tx:
-            steps.append((liq_tx, handle_liquidate))
-    else:
-        liq_txs = build_liquidate_remaining_conditional_sdai_tx(
-            -liquidate_conditional_sdai_amount, False
-        )
-        if liq_txs:
-            steps +=    [(liq_txs[0], handle_buy_sdai_yes ), (liq_txs[1], handle_merge_conditional_sdai)]
+    steps += add_conditional_sdai_liquidation_steps(
+        liquidate_conditional_sdai_amount,
+        handle_liquidate,
+        handle_buy_sdai_yes,
+        handle_merge_conditional_sdai,
+    )
 
     # Optional Balancer swap (sell GNO → sDAI) – may be empty
     if gno_to_sdai_txs:
