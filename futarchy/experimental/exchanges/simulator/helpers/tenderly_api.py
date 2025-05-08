@@ -47,7 +47,7 @@ class TenderlyClient:
                 **tx,
                 "save": True,
                 "save_if_fails": True,
-                "simulation_type": "full",
+                "simulation_type": "quick",
             }
             for tx in txs
         ]

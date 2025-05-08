@@ -1,7 +1,7 @@
 import os
 import time
 from decimal import Decimal
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Optional
 from web3 import Web3
 # NOTE: Assuming the ABI location is correct relative to the new structure
 from futarchy.experimental.config.abis.swapr import SWAPR_ROUTER_ABI 
@@ -102,6 +102,20 @@ def build_exact_out_tx(
 
 # Convenience wrappers ------------------------------------------------------- #
 
+# --------------------------------------------------------------------------- #
+# Internal helpers                                                            #
+# --------------------------------------------------------------------------- #
+
+def _search_call_trace(node: Dict[str, Any], target: str) -> Optional[Dict[str, Any]]:
+    """Recursively walk Tenderly's call-trace until the first call to *target*."""
+    if node.get("to", "").lower() == target.lower():
+        return node
+    for child in node.get("calls", []):
+        found = _search_call_trace(child, target)
+        if found:
+            return found
+    return None
+
 
 def simulate_exact_in(*args, **kwargs):
     """Build **and** simulate an exact-in swap via Tenderly."""
@@ -129,10 +143,14 @@ def parse_swap_results(
     w3_inst: Optional[Web3] = None,
     label: Optional[str] = None,
     fixed: str = "in",
-) -> None:
-    """Pretty-print Tenderly simulation results (compatible with balancer helper)."""
+) -> Optional[Dict[str, Decimal]]:
+    """Pretty-print simulation results.
 
+    For both ``exactInputSingle`` **and** ``exactOutputSingle`` swaps return
+    ``{'input_amount': Decimal, 'output_amount': Decimal}``.
+    """
     w3_local = w3_inst or w3
+    result_dict: Optional[Dict[str, Decimal]] = None
     for idx, sim in enumerate(results):
         if label:
             header = label
@@ -158,18 +176,69 @@ def parse_swap_results(
         # Attempt to decode returned amount based on swap kind
         call_trace = tx_resp.get("transaction_info", {}).get("call_trace", {})
         out_hex = call_trace.get("output")
+        ret_wei: Optional[int] = None
         if out_hex and out_hex != "0x":
             try:
                 ret_wei = int(out_hex[2:66], 16)
+                human_out = _wei_to_eth(ret_wei)
                 if fixed == "in":
-                    print("  amountOut:", _wei_to_eth(ret_wei))
+                    print("  amountOut:", human_out)
                 else:
-                    print("  amountIn:", _wei_to_eth(ret_wei))
+                    print("  amountIn:", human_out)
             except Exception:  # noqa: BLE001
                 pass
+
+        # ------------------------------------------------------------------ #
+        # 1. Locate the router call in the nested trace                      #
+        # ------------------------------------------------------------------ #
+        router_call = _search_call_trace(call_trace, router.address)
+        if router_call is None:
+            print("router call NOT found – cannot decode input")
+            continue
+
+        # ------------------------------------------------------------------ #
+        # 2. Decode the router call input/output                             #
+        # ------------------------------------------------------------------ #
+        call_input = router_call.get("input")
+        if call_input and call_input != "0x":
+            print("router_call input:", call_input[:10], "…")
+            try:
+                func, params = router.decode_function_input(call_input)
+                print("decoded function:", func.fn_name)
+                # The decode result can be either a list/tuple or a dict:
+                inner = (
+                    params[0]                       # positional (tuple/list)
+                    if not isinstance(params, dict)
+                    else next(iter(params.values()))  # dict -> grab the single struct
+                )
+
+                if func.fn_name == "exactInputSingle":
+                    input_wei = inner[4] if isinstance(inner, (list, tuple)) else inner["amountIn"]
+                    ret_wei    = int(router_call.get("output", "0x")[2:66], 16)
+                    result_dict = {
+                        "input_amount":  _wei_to_eth(input_wei),
+                        "output_amount": _wei_to_eth(ret_wei),
+                    }
+
+                elif func.fn_name == "exactOutputSingle":
+                    output_wei = inner[5] if isinstance(inner, (list, tuple)) else inner["amountOut"]
+                    ret_wei    = int(router_call.get("output", "0x")[2:66], 16)
+                    result_dict = {
+                        "input_amount":  _wei_to_eth(ret_wei),  # actual cost
+                        "output_amount": _wei_to_eth(output_wei),
+                    }
+
+                # Debug: show the struct we just parsed
+                print("inner struct:", inner)
+                print("result_dict:", result_dict)
+
+            except Exception as e:
+                print("decode_function_input exception:", e)
 
         # Print balance changes when available
         for token, diff in (sim.get("balance_changes") or {}).items():
             sign = "+" if int(diff) > 0 else "-"
             human = _wei_to_eth(abs(int(diff)))
             print(f"  {token}: {sign}{human}")
+    print(result_dict)
+    return result_dict
