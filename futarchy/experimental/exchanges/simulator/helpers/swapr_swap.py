@@ -152,6 +152,7 @@ def parse_swap_results(
     results: List[Dict[str, Any]],
     w3_inst: Optional[Web3] = None,
     label: Optional[str] = None,
+    fixed: str = "in",
 ) -> None:
     """Pretty-print Tenderly simulation results (compatible with balancer helper)."""
 
@@ -178,13 +179,16 @@ def parse_swap_results(
 
         print("✅ swap succeeded.")
 
-        # Attempt to decode amountOut from call trace output
+        # Attempt to decode returned amount based on swap kind
         call_trace = tx_resp.get("transaction_info", {}).get("call_trace", {})
         out_hex = call_trace.get("output")
         if out_hex and out_hex != "0x":
             try:
-                amount_out_wei = int(out_hex[2:66], 16)
-                print("  amountOut:", _wei_to_eth(amount_out_wei))
+                ret_wei = int(out_hex[2:66], 16)
+                if fixed == "in":
+                    print("  amountOut:", _wei_to_eth(ret_wei))
+                else:
+                    print("  amountIn:", _wei_to_eth(ret_wei))
             except Exception:  # noqa: BLE001
                 pass
 

@@ -147,18 +147,18 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
         print("SplitPosition tx parsed – nothing to extract.")
 
     def handle_yes_swap(idx, sim):
-        """Swap of GNO-YES → sDAI-YES (exact-in)."""
+        """Swap of GNO-YES → sDAI-YES (exact-out)."""
         nonlocal amount_out_yes_wei
-        parse_swapr_results([sim], label="SwapR YES (exact-in)")
-        extracted = extract_amount_in(sim, split_amount_in_wei)
+        parse_swapr_results([sim], label="SwapR YES (exact-out)", fixed="out")
+        extracted = extract_return(sim, gno_amount_in_wei, "out")
         if extracted is not None:
             amount_out_yes_wei = extracted
 
     def handle_no_swap(idx, sim):
-        """Swap of GNO-NO → sDAI-NO (exact-in)."""
+        """Swap of GNO-NO → sDAI-NO (exact-out)."""
         nonlocal amount_out_no_wei
-        parse_swapr_results([sim], label="SwapR NO  (exact-in)")
-        extracted = extract_amount_in(sim, split_amount_in_wei)
+        parse_swapr_results([sim], label="SwapR NO  (exact-out)", fixed="out")
+        extracted = extract_return(sim, gno_amount_in_wei, "out")
         if extracted is not None:
             amount_out_no_wei = extracted
 
@@ -166,7 +166,7 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
         print("MergePositions tx parsed – nothing to extract.")
 
     def handle_liquidate(idx, sim):
-        parse_swapr_results([sim], label="SwapR Liquidate YES→sDAI (exact-in)")
+        parse_swapr_results([sim], label="SwapR Liquidate YES→sDAI (exact-in)", fixed="in")
 
     def handle_balancer(idx, sim):
         parse_swap_results([sim], w3)
@@ -225,20 +225,29 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
     amount_out_no_wei = None  # From third simulation (GNO-NO  → sDAI-NO)
 
     # Helper to decode uint256 output and pretty print
-    def extract_amount_in(sim, amount_in_wei_local):
+    def extract_return(sim, amount_in_or_out_wei_local, fixed_kind):
         tx = sim.get("transaction", {})
         call_trace = tx.get("transaction_info", {}).get("call_trace", {})
         output_hex = call_trace.get("output")
         if output_hex and output_hex != "0x":
             try:
-                amt_in = int(output_hex, 16)
+                returned_amount_wei = int(output_hex[2:], 16)
             except ValueError:
                 return None
-            human = w3.from_wei(amt_in, "ether")
-            print("  Simulated amountIn:", human)
-            price = Decimal(human) / Decimal(w3.from_wei(amount_in_wei_local, "ether"))
+
+            returned_amount = w3.from_wei(returned_amount_wei, "ether")
+
+            if fixed_kind == "in":
+                print("  Simulated amountOut:", returned_amount)
+                input_amount = w3.from_wei(amount_in_or_out_wei_local, "ether")
+                price = Decimal(returned_amount) / Decimal(input_amount)
+            else:
+                print("  Simulated amountIn:", returned_amount)
+                output_amount = w3.from_wei(amount_in_or_out_wei_local, "ether")
+                price = Decimal(output_amount) / Decimal(returned_amount)
+
             print("  Simulated price:", price)
-            return amt_in
+            return returned_amount_wei
         print("  No output data returned from simulation.")
         return None
 
