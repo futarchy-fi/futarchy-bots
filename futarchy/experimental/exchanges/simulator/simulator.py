@@ -81,23 +81,47 @@ def build_liquidate_remaining_conditional_sdai_tx(amount: float, is_yes: bool):
 
     If *is_yes* is False, this is a no-op and returns ``None``.
     """
-    if not is_yes:
-        return None
+    if is_yes:
+        amount_in_wei = w3.to_wei(Decimal(amount), "ether")
+        min_amount_out_wei = 1  # minimal out to avoid reverting on 0
 
-    amount_in_wei = w3.to_wei(Decimal(amount), "ether")
-    min_amount_out_wei = 1  # minimal out to avoid reverting on 0
+        in_token = w3.to_checksum_address(os.environ["SWAPR_SDAI_YES_ADDRESS"])
+        out_token = w3.to_checksum_address(os.environ["SDAI_TOKEN_ADDRESS"])
 
-    in_token = w3.to_checksum_address(os.environ["SWAPR_SDAI_YES_ADDRESS"])
-    out_token = w3.to_checksum_address(os.environ["SDAI_TOKEN_ADDRESS"])
+        return build_exact_in_tx(
+            in_token,
+            out_token,
+            amount_in_wei,
+            int(amount_in_wei * 0.1),
+            acct.address,
+            sqrt_price_limit=0,
+        )
+    else:
+        # Build and return two txs:
+        #   1️⃣ buy exact-out <amount> sDAI-YES with plain sDAI
+        #   2️⃣ merge the freshly bought sDAI-YES back into plain sDAI
+        amount_out_yes_wei = w3.to_wei(Decimal(amount), "ether")
+        max_in_sdai_wei = int(amount_out_yes_wei * 1.2)
 
-    return build_exact_in_tx(
-        in_token,
-        out_token,
-        amount_in_wei,
-        int(amount_in_wei * 0.1),
-        acct.address,
-        sqrt_price_limit=0,
-    )
+        buy_tx = build_exact_out_tx(
+            w3.to_checksum_address(os.environ["SDAI_TOKEN_ADDRESS"]),   # tokenIn  (sDAI)
+            w3.to_checksum_address(os.environ["SWAPR_SDAI_YES_ADDRESS"]),# tokenOut (sDAI-YES)
+            amount_out_yes_wei,                                          # exact-out
+            max_in_sdai_wei,                                             # slippage buffer
+            acct.address,
+        )
+
+        merge_tx = build_merge_tx(
+            w3,
+            client,
+            router_addr,
+            proposal_addr,
+            collateral_addr,          # merge sDAI collateral
+            amount_out_yes_wei,
+            acct.address,
+        )
+
+        return [buy_tx, merge_tx]
 
 
 # Adjust collateral amount to split as needed (currently hard-coded to 1 ether)
@@ -168,6 +192,12 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
     def handle_liquidate(idx, sim):
         parse_swapr_results([sim], label="SwapR Liquidate YES→sDAI (exact-in)", fixed="in")
 
+    def handle_buy_sdai_yes(idx, sim):
+        parse_swapr_results([sim], label="SwapR buy sDAI-YES (exact-out)", fixed="out")
+
+    def handle_merge_conditional_sdai(idx, sim):
+        print("Merge conditional sDAI positions parsed – nothing to extract.")
+
     def handle_balancer(idx, sim):
         parse_swap_results([sim], w3)
 
@@ -204,6 +234,12 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
         )
         if liq_tx:
             steps.append((liq_tx, handle_liquidate))
+    else:
+        liq_txs = build_liquidate_remaining_conditional_sdai_tx(
+            -liquidate_conditional_sdai_amount, False
+        )
+        if liq_txs:
+            steps +=    [(liq_txs[0], handle_buy_sdai_yes ), (liq_txs[1], handle_merge_conditional_sdai)]
 
     # Optional Balancer swap (sell GNO → sDAI) – may be empty
     if gno_to_sdai_txs:
