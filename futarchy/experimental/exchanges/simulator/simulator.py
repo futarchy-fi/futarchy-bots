@@ -157,8 +157,6 @@ def handle_split(state, sim):
 
 def handle_yes_swap(state, sim):
     data = parse_swapr_results([sim], label="SwapR YES (exact-out)", fixed="out")
-    # if data:
-    #     state["sdai_in"] += data["input_amount"]
     returned_amount_wei = extract_return(sim, None, "out")
     if returned_amount_wei is not None:
         state["amount_out_yes_wei"] = returned_amount_wei
@@ -166,8 +164,6 @@ def handle_yes_swap(state, sim):
 
 def handle_no_swap(state, sim):
     data = parse_swapr_results([sim], label="SwapR NO  (exact-out)", fixed="out")
-    # if data:
-        # state["sdai_in"] += data["input_amount"]
     returned_amount_wei = extract_return(sim, None, "out")
     if returned_amount_wei is not None:
         state["amount_out_no_wei"] = returned_amount_wei
@@ -179,14 +175,11 @@ def handle_merge(state, sim):
 def handle_liquidate(state, sim):
     data = parse_swapr_results([sim], label="SwapR Liquidate YES→sDAI (exact-in)", fixed="in")
     if data:
-        # state["sdai_in"]  += data["input_amount"]
         state["sdai_out"] += data["output_amount"]
     return state
 
 def handle_buy_sdai_yes(state, sim):
     data = parse_swapr_results([sim], label="SwapR buy sDAI-YES (exact-out)", fixed="out")
-    # if data:
-    #     state["sdai_in"] += data["input_amount"]
     return state
 
 def handle_merge_conditional_sdai(state, sim):
@@ -270,7 +263,6 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
     state = {
         "amount_out_yes_wei": None,
         "amount_out_no_wei": None,
-        "sdai_in": Decimal("0"),
         "sdai_out": Decimal("0"),
     }
     if result and result.get("simulation_results"):
@@ -294,7 +286,7 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
                 print("No handler defined for this tx.")
     else:
         print("Simulation failed or returned no results.")
-    sdai_in = split_amount + max(-liquidate_conditional_sdai_amount or 0, 0)
+    sdai_in = Decimal(split_amount) + Decimal(max(-liquidate_conditional_sdai_amount or 0, 0))
     return {
         "amount_out_yes": w3.from_wei(state["amount_out_yes_wei"], "ether") if state["amount_out_yes_wei"] else None,
         "amount_out_no" : w3.from_wei(state["amount_out_no_wei"], "ether") if state["amount_out_no_wei"]  else None,
