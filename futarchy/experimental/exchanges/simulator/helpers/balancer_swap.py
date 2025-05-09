@@ -114,7 +114,19 @@ __all__ = [
     "build_sell_gno_to_sdai_swap_tx",
     "sell_gno_to_sdai",
     "parse_swap_results",
+    "_search_call_trace",
 ]
+
+def _search_call_trace(node: Dict[str, Any], target: str) -> Optional[Dict[str, Any]]:
+    """Depth-first search for the first call to *target* in Tenderly call-trace."""
+    if node.get("to", "").lower() == target.lower():
+        return node
+    for child in node.get("calls", []):
+        found = _search_call_trace(child, target)
+        if found:
+            return found
+    return None
+
 
 
 def _get_router(w3: Web3, router_addr: str | None = None):
@@ -217,44 +229,69 @@ def _wei_to_eth(value: int) -> Decimal:
     return Decimal(Web3.from_wei(value, "ether"))
 
 
-def parse_swap_results(results: List[Dict[str, Any]], w3: Web3) -> None:
-    """Pretty-print each simulation result from the swapExactIn bundle."""
+def parse_swap_results(results: List[Dict[str, Any]], w3: Web3) -> Optional[Dict[str, Decimal]]:
+    """Pretty-print and return {'input_amount', 'output_amount'} for each result."""
+    result_dict: Optional[Dict[str, Decimal]] = None
     for idx, sim in enumerate(results):
-        if len(results) == 1:
-            print(f"\n--- Balancer swap Simulation Result ---")
-        else:
-            print(f"\n--- Balancer swap Simulation Result #{idx + 1} ---")
-
         if sim.get("error"):
             print("Tenderly simulation error:", sim["error"].get("message", "Unknown error"))
             continue
-
         tx = sim.get("transaction")
         if not tx:
             print("No transaction data in result.")
             continue
-
         if tx.get("status") is False:
             info = tx.get("transaction_info", {})
             reason = info.get("error_message", info.get("revert_reason", "N/A"))
             print("❌ swapExactIn REVERTED. Reason:", reason)
             continue
-
-        print("✅ swapExactIn succeeded.")
-
-        # Extract decoded output, if Tenderly generated it
+        # ------------------------------------------------------------------ #
+        # 1. Walk trace → router call                                        #
+        # ------------------------------------------------------------------ #
         call_trace = tx.get("transaction_info", {}).get("call_trace", {})
-        output_hex = call_trace.get("output")
-        if output_hex:
-            try:
-                amounts_out = w3.codec.decode(["uint256[]", "address[]", "uint256[]"], bytes.fromhex(output_hex[2:]))[2]
-                if amounts_out:
-                    human_out = _wei_to_eth(int(amounts_out[0]))
-                    print(f"Amount out ≈ {human_out} sDAI")
-            except Exception:  # noqa: BLE001
-                pass
+        router      = _get_router(w3)
+        router_call = _search_call_trace(call_trace, router.address)
+        if router_call is None:
+            print("Router call not found in trace.")
+            continue
+        # ------------------------------------------------------------------ #
+        # 2. Decode call INPUT                                               #
+        # ------------------------------------------------------------------ #
+        func, params = router.decode_function_input(router_call["input"])
+        # Extract exactAmountIn from the first path element, handling both tuple- and dict-style decodes.
+        if isinstance(params, dict):
+            # Grab the single positional arg ("paths") if params is a mapping
+            param_val = next(iter(params.values()))
+        else:
+            param_val = params[0]  # positional list/tuple
 
-        # Balance changes (if provided)
+        if not param_val:
+            print("Decoded params empty – cannot find paths.")
+            continue
+
+        # param_val is paths: List[SwapPathExactAmountIn]
+        first_path = param_val[0] if isinstance(param_val, (list, tuple)) else next(iter(param_val.values()))
+        # SwapPath tuple: (tokenIn, steps, exactAmountIn, minAmountOut)
+        if isinstance(first_path, (list, tuple)):
+            exact_amount_in = first_path[2]
+        else:
+            exact_amount_in = first_path.get("exactAmountIn") or first_path.get("amountIn")
+
+        if exact_amount_in is None:
+            print("Could not extract exactAmountIn from decoded input.")
+            continue
+
+        # ------------------------------------------------------------------ #
+        # 3. Decode call OUTPUT                                              #
+        # ------------------------------------------------------------------ #
+        decoded      = w3.codec.decode(["uint256[]", "address[]", "uint256[]"],
+                                        bytes.fromhex(router_call["output"][2:]))
+        output_wei   = decoded[2][0]          # amountsOut[0]
+        result_dict = {
+            "input_amount":  _wei_to_eth(exact_amount_in),
+            "output_amount": _wei_to_eth(output_wei),
+        }
+        print("result_dict:", result_dict)
         balance_changes = sim.get("balance_changes") or {}
         if balance_changes:
             print("Balance changes:")
@@ -264,6 +301,9 @@ def parse_swap_results(results: List[Dict[str, Any]], w3: Web3) -> None:
                 print(f"  {token_addr}: {sign}{human}")
         else:
             print("(No balance change info)")
+    return result_dict
+
+
 
 
 # -----------------------------------------------------------------------------
