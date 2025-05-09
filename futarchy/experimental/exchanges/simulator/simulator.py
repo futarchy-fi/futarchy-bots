@@ -369,13 +369,26 @@ def get_gno_yes_and_no_amounts_from_sdai(amount):
     
     amount_in_yes_wei = result['amount_in_yes_wei']
     amount_in_no_wei = result['amount_in_no_wei']
-    sdai_in = result['sdai_in']
-    sdai_out = result['sdai_out']
 
     print("STEP 2 result ----------------")
     print(result)
+
+    print("STEP 3 ----------------")
+    liquidate_conditional_sdai_amount = amount_in_no_wei - amount_in_yes_wei
+    result = get_gno_yes_and_no_amounts_from_sdai_single(amount, amount_out_limited, liquidate_conditional_sdai_amount)
+
+    sdai_in = result['sdai_in']
+    sdai_out = result['sdai_out']
+
+    print("STEP 3 result ----------------")
+    print(result)
+
+    print("FINAL RESULT")
+    print("sDAI in:", sdai_in)
+    print("sDAI out:", sdai_out)
+    print("sDAI net:", sdai_out - sdai_in)
     
-    # result = get_gno_yes_and_no_amounts_from_sdai_single(amount, gno_amount, liquidate_conditional_sdai_amount)
+    # {'amount_out_yes_wei': 79795754040190069, 'amount_out_no_wei': 79795754040190069, 'sdai_out': Decimal('8.817678887877001605'), 'sdai_in': Decimal('10'), 'amount_in_yes_wei': 9321050584772429194, 'amount_in_no_wei': 9999999999999999964}
 
 
 if __name__ == "__main__legacy":
