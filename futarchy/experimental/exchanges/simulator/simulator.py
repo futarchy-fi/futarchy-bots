@@ -25,7 +25,7 @@ proposal_addr = w3.to_checksum_address(os.environ["FUTARCHY_PROPOSAL_ADDRESS"])
 collateral_addr = w3.to_checksum_address(os.environ["SDAI_TOKEN_ADDRESS"])
 gno_collateral_addr = w3.to_checksum_address(os.environ["GNO_TOKEN_ADDRESS"])
 
-def add_conditional_sdai_liquidation_steps(
+def build_conditional_sdai_liquidation_steps(
     liquidate_conditional_sdai_amount,
     handle_liquidate,
     handle_buy_sdai_yes,
@@ -69,8 +69,8 @@ def build_step_1_swap_steps(split_amount_in_wei, gno_amount_in_wei, price=1000):
             token_no_in, token_no_out, split_amount_in_wei, amount_out_min, acct.address
         )
         return [
-            (yes_tx, handle_swap("yes", "in")),
-            (no_tx, handle_swap("no", "in")),
+            (yes_tx, handle_swap("yes", "in", split_amount_in_wei)),
+            (no_tx, handle_swap("no", "in", split_amount_in_wei)),
         ]
     else:
         deadline = int(time.time()) + 600
@@ -86,8 +86,8 @@ def build_step_1_swap_steps(split_amount_in_wei, gno_amount_in_wei, price=1000):
             token_no_in, token_no_out, amount_out_expected, amount_in_max, acct.address
         )
         return [
-            (yes_tx, handle_swap("yes", "out")),
-            (no_tx, handle_swap("no", "out")),
+            (yes_tx, handle_swap("yes", "out", amount_out_expected)),
+            (no_tx, handle_swap("no", "out", amount_out_expected)),
         ]
 
 
@@ -136,7 +136,7 @@ def build_liquidate_remaining_conditional_sdai_tx(amount: float, is_yes: bool):
         max_in_sdai_wei = int(amount_out_yes_wei * 1.2)
 
         buy_tx = build_exact_out_tx(
-            w3.to_checksum_address(os.environ["SDAI_TOKEN_ADDRESS"]),   # tokenIn  (sDAI)
+            w3.to_checksum_address(os.environ["SDAI_TOKEN_ADDRESS"]),    # tokenIn  (sDAI)
             w3.to_checksum_address(os.environ["SWAPR_SDAI_YES_ADDRESS"]),# tokenOut (sDAI-YES)
             amount_out_yes_wei,                                          # exact-out
             max_in_sdai_wei,                                             # slippage buffer
@@ -196,7 +196,7 @@ def handle_balancer(state, sim):
         state["sdai_out"] += data["output_amount"]
     return state
 
-def handle_swap(label_kind: str, fixed_kind: str):
+def handle_swap(label_kind: str, fixed_kind: str, amount_wei: int):
     """Return a swap handler closure for either YES or NO leg.
 
     *label_kind* must be ``"yes"`` or ``"no"`` and *fixed_kind* ``"in"`` or ``"out"``.
@@ -212,12 +212,23 @@ def handle_swap(label_kind: str, fixed_kind: str):
         # Re-use existing pretty-printer util
         parse_swapr_results([sim], label=label, fixed=fixed_kind_lc)
 
-        returned_amount_wei = extract_return(sim, None, fixed_kind_lc)
-        if returned_amount_wei is not None:
+        returned_amount_wei = extract_return(sim, amount_wei, fixed_kind_lc)
+        if fixed_kind_lc == "in" and returned_amount_wei is not None:
+            print("Setting amount_out_")
             if label_kind_lc == "yes":
                 state["amount_out_yes_wei"] = returned_amount_wei
+                state["amount_in_yes_wei"] = amount_wei
             else:
                 state["amount_out_no_wei"] = returned_amount_wei
+                state["amount_in_no_wei"] = amount_wei
+        elif fixed_kind_lc == "out" and returned_amount_wei is not None:
+            print("Setting amount_in_")
+            if label_kind_lc == "yes":
+                state["amount_in_yes_wei"] = returned_amount_wei
+                state["amount_out_yes_wei"] = amount_wei
+            else:
+                state["amount_in_no_wei"] = returned_amount_wei
+                state["amount_out_no_wei"] = amount_wei
         return state
 
     return _handler
@@ -268,7 +279,7 @@ def get_gno_yes_and_no_amounts_from_sdai(amount, gno_amount=None, liquidate_cond
     )
     steps.append((merge_tx, handle_merge))
     if liquidate_conditional_sdai_amount:
-        steps += add_conditional_sdai_liquidation_steps(
+        steps += build_conditional_sdai_liquidation_steps(
             liquidate_conditional_sdai_amount,
             handle_liquidate,
             handle_buy_sdai_yes,
@@ -316,6 +327,7 @@ def get_gno_yes_and_no_amounts_from_sdai(amount, gno_amount=None, liquidate_cond
             if idx < len(steps):
                 _, handler = steps[idx]
                 state = handler(state, sim)
+                print("State after handling:", state)
             else:
                 print("No handler defined for this tx.")
     else:
