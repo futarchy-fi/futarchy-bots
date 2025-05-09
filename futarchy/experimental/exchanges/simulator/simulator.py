@@ -1,4 +1,4 @@
-import os, time
+import os, time, json
 from decimal import Decimal
 from eth_account import Account
 from .helpers.swapr_swap import (
@@ -245,7 +245,7 @@ def extract_return(sim, amount_in_or_out_wei_local, fixed_kind):
         return returned_amount_wei
     return None
 
-def get_gno_yes_and_no_amounts_from_sdai(amount, gno_amount=None, liquidate_conditional_sdai_amount=None, price=100):
+def get_gno_yes_and_no_amounts_from_sdai_single(amount, gno_amount=None, liquidate_conditional_sdai_amount=None, price=100):
     split_amount_in_wei = w3.to_wei(Decimal(amount), "ether")
     if gno_amount is not None:
         gno_amount_in_wei = w3.to_wei(Decimal(gno_amount), "ether")
@@ -305,10 +305,12 @@ def get_gno_yes_and_no_amounts_from_sdai(amount, gno_amount=None, liquidate_cond
     print("--- Prepared Bundle ---")
     print(bundle)
     result = client.simulate(bundle)
+    sdai_in = Decimal(amount) + Decimal(max(-(liquidate_conditional_sdai_amount or 0), 0))
     state = {
         "amount_out_yes_wei": None,
         "amount_out_no_wei": None,
         "sdai_out": Decimal("0"),
+        "sdai_in": sdai_in,
     }
     if result and result.get("simulation_results"):
         sims = result["simulation_results"]
@@ -332,17 +334,51 @@ def get_gno_yes_and_no_amounts_from_sdai(amount, gno_amount=None, liquidate_cond
                 print("No handler defined for this tx.")
     else:
         print("Simulation failed or returned no results.")
-    sdai_in = Decimal(amount) + Decimal(max(-(liquidate_conditional_sdai_amount or 0), 0))
-    return {
-        "amount_out_yes": w3.from_wei(state["amount_out_yes_wei"], "ether") if state["amount_out_yes_wei"] else None,
-        "amount_out_no" : w3.from_wei(state["amount_out_no_wei"], "ether") if state["amount_out_no_wei"]  else None,
-        "sdai_in" : sdai_in,
-        "sdai_out": state["sdai_out"],
-        "sdai_net": state["sdai_out"] - sdai_in,
-    }
+    # return {
+    #     "amount_out_yes": w3.from_wei(state["amount_out_yes_wei"], "ether") if state["amount_out_yes_wei"] else None,
+    #     "amount_out_no" : w3.from_wei(state["amount_out_no_wei"], "ether") if state["amount_out_no_wei"]  else None,
+    #     "sdai_in" : sdai_in,
+    #     "sdai_out": state["sdai_out"],
+    #     "sdai_net": state["sdai_out"] - sdai_in,
+    # }
+    return state
+
+def get_gno_yes_and_no_amounts_from_sdai(amount):
+    
+    # gno_amount = float(sys.argv[2]) if len(sys.argv) > 2 else None
+    # liquidate_conditional_sdai_amount = float(sys.argv[3]) if len(sys.argv) > 3 else None
+
+    print("STEP 1 ----------------")
+    result = get_gno_yes_and_no_amounts_from_sdai_single(amount, None, None)
+    print("STEP 1 result ----------------")
+    print(result)
+    # result = {'amount_out_yes_wei': 83891929876473596, 'amount_out_no_wei': 79795754040190069, 'sdai_out': Decimal('0'), 'sdai_in': Decimal('10'), 'amount_in_yes_wei': 10000000000000000000, 'amount_in_no_wei': 10000000000000000000}
+    amount_out_yes_wei = result['amount_out_yes_wei']
+    amount_out_no_wei = result['amount_out_no_wei']
 
 
-if __name__ == "__main__":
+    print("STEP 2 ----------------")
+    if amount_out_yes_wei > amount_out_no_wei:
+        amount_out_limited_wei = amount_out_no_wei
+    else:
+        amount_out_limited_wei = amount_out_yes_wei
+
+    amount_out_limited = w3.from_wei(amount_out_limited_wei, "ether")  # gno_amount in ETH
+
+    result = get_gno_yes_and_no_amounts_from_sdai_single(amount, amount_out_limited, None)
+    
+    amount_in_yes_wei = result['amount_in_yes_wei']
+    amount_in_no_wei = result['amount_in_no_wei']
+    sdai_in = result['sdai_in']
+    sdai_out = result['sdai_out']
+
+    print("STEP 2 result ----------------")
+    print(result)
+    
+    # result = get_gno_yes_and_no_amounts_from_sdai_single(amount, gno_amount, liquidate_conditional_sdai_amount)
+
+
+if __name__ == "__main__legacy":
     import sys
 
     if len(sys.argv) < 2:
@@ -353,14 +389,21 @@ if __name__ == "__main__":
     amount = float(sys.argv[1])
     gno_amount = float(sys.argv[2]) if len(sys.argv) > 2 else None
     liquidate_conditional_sdai_amount = float(sys.argv[3]) if len(sys.argv) > 3 else None
-    result = get_gno_yes_and_no_amounts_from_sdai(amount, gno_amount, liquidate_conditional_sdai_amount)
-    print(
-        "(amount_out_yes = {}   , amount_out_no = {}   , sdai_in = {}   , sdai_out = {}   , sdai_net = {})".format(
-            result["amount_out_yes"],
-            result["amount_out_no"],
-            result["sdai_in"],
-            result["sdai_out"],
-            result["sdai_net"],
-        ),
-    )
+    result = get_gno_yes_and_no_amounts_from_sdai_single(amount, gno_amount, liquidate_conditional_sdai_amount)
+    print("----------------")
+    print(result)
+
+
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) < 2:
+        print(
+            "Usage: python -m futarchy.experimental.exchanges.simulator.simulator <amount>"
+        )
+        sys.exit(1)
+    amount = float(sys.argv[1])
+    result = get_gno_yes_and_no_amounts_from_sdai(amount)
+    # print("----------------")
+    # print(result)
 # python -m futarchy.experimental.exchanges.simulator.simulator <amount> [<gno_amount>] [<liquidate_conditional_sdai_amount>]
