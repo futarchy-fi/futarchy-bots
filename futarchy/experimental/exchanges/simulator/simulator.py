@@ -152,6 +152,64 @@ def build_liquidate_remaining_conditional_sdai_tx(amount: float, is_yes: bool):
 
 
 # Adjust collateral amount to split as needed (currently hard-coded to 1 ether)
+def handle_split(state, sim):
+    return state
+
+def handle_yes_swap(state, sim):
+    data = parse_swapr_results([sim], label="SwapR YES (exact-out)", fixed="out")
+    # if data:
+    #     state["sdai_in"] += data["input_amount"]
+    returned_amount_wei = extract_return(sim, None, "out")
+    if returned_amount_wei is not None:
+        state["amount_out_yes_wei"] = returned_amount_wei
+    return state
+
+def handle_no_swap(state, sim):
+    data = parse_swapr_results([sim], label="SwapR NO  (exact-out)", fixed="out")
+    # if data:
+        # state["sdai_in"] += data["input_amount"]
+    returned_amount_wei = extract_return(sim, None, "out")
+    if returned_amount_wei is not None:
+        state["amount_out_no_wei"] = returned_amount_wei
+    return state
+
+def handle_merge(state, sim):
+    return state
+
+def handle_liquidate(state, sim):
+    data = parse_swapr_results([sim], label="SwapR Liquidate YES→sDAI (exact-in)", fixed="in")
+    if data:
+        # state["sdai_in"]  += data["input_amount"]
+        state["sdai_out"] += data["output_amount"]
+    return state
+
+def handle_buy_sdai_yes(state, sim):
+    data = parse_swapr_results([sim], label="SwapR buy sDAI-YES (exact-out)", fixed="out")
+    # if data:
+    #     state["sdai_in"] += data["input_amount"]
+    return state
+
+def handle_merge_conditional_sdai(state, sim):
+    return state
+
+def handle_balancer(state, sim):
+    data = parse_swap_results([sim], w3)
+    if data:
+        state["sdai_out"] += data["output_amount"]
+    return state
+
+def extract_return(sim, amount_in_or_out_wei_local, fixed_kind):
+    tx = sim.get("transaction", {})
+    call_trace = tx.get("transaction_info", {}).get("call_trace", {})
+    output_hex = call_trace.get("output")
+    if output_hex and output_hex != "0x":
+        try:
+            returned_amount_wei = int(output_hex[2:], 16)
+        except ValueError:
+            return None
+        return returned_amount_wei
+    return None
+
 def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidate_conditional_sdai_amount=None, price=100):
     split_amount_in_wei = w3.to_wei(Decimal(split_amount), "ether")
     if gno_amount is not None:
@@ -159,7 +217,6 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
     else:
         gno_amount_in_wei = None
 
-    # Build the splitPosition tx dict (to be simulated by Tenderly)
     split_tx = build_split_tx(
         w3,
         client,
@@ -170,93 +227,23 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
         acct.address,
     )
 
-    deadline = int(time.time()) + 600
-    amount_in_max = int(split_amount_in_wei * 1.2)
-    amount_out_expected = int(split_amount_in_wei / price)
-    amount_out_min = int(amount_out_expected * 0.9)
-    sqrt_price_limit = 0
-
-    # If user supplied GNO to sell, build Balancer swap tx first
     gno_to_sdai_txs = []
     if gno_amount_in_wei:
-        # Require at least 1 wei out – caller can adjust price slippage externally
         gno_to_sdai_txs.append(
             build_sell_gno_to_sdai_swap_tx(
                 w3,
                 client,
                 gno_amount_in_wei,
-                1,  # minAmountOut = 1 wei (effectively no slippage protection)
+                1,
                 acct.address,
             )
         )
 
-    # ------------------------------------------------------------------
-    # 1️⃣  Define handlers FIRST so we can reference them in the steps list
-    # ------------------------------------------------------------------
-
-    def handle_split(idx, sim):
-        print("SplitPosition tx parsed – nothing to extract.")
-
-    def handle_yes_swap(idx, sim):
-        """Swap of GNO-YES → sDAI-YES (exact-out)."""
-        nonlocal amount_out_yes_wei, sdai_in
-        data = parse_swapr_results([sim], label="SwapR YES (exact-out)", fixed="out")
-        if data:
-            sdai_in += data["input_amount"]
-        extracted = extract_return(sim, gno_amount_in_wei, "out")
-        if extracted is not None:
-            amount_out_yes_wei = extracted
-
-    def handle_no_swap(idx, sim):
-        """Swap of GNO-NO → sDAI-NO (exact-out)."""
-        nonlocal amount_out_no_wei, sdai_in
-        data = parse_swapr_results([sim], label="SwapR NO  (exact-out)", fixed="out")
-        if data:
-            sdai_in += data["input_amount"]
-        extracted = extract_return(sim, gno_amount_in_wei, "out")
-        if extracted is not None:
-            amount_out_no_wei = extracted
-
-    def handle_merge(idx, sim):
-        print("MergePositions tx parsed – nothing to extract.")
-
-    def handle_liquidate(idx, sim):
-        nonlocal sdai_in, sdai_out
-        data = parse_swapr_results([sim], label="SwapR Liquidate YES→sDAI (exact-in)", fixed="in")
-        if data:
-            sdai_in  += data["input_amount"]
-            sdai_out += data["output_amount"]
-
-    def handle_buy_sdai_yes(idx, sim):
-        nonlocal sdai_in
-        data = parse_swapr_results([sim], label="SwapR buy sDAI-YES (exact-out)", fixed="out")
-        if data:
-            sdai_in += data["input_amount"]
-
-    def handle_merge_conditional_sdai(idx, sim):
-        print("Merge conditional sDAI positions parsed – nothing to extract.")
-
-    def handle_balancer(idx, sim):
-        nonlocal sdai_out
-        data = parse_swap_results([sim], w3)
-        if data:
-            sdai_out += data["output_amount"]
-
-    # ------------------------------------------------------------------
-    # 2️⃣  Build the *steps* list declaratively: (tx_dict, handler) pairs
-    # ------------------------------------------------------------------
-
-    steps: list[tuple[dict, callable]] = []
-
-    # Split
+    steps = []
     steps.append((split_tx, handle_split))
-
-    # YES / NO swaps (2 txs)
     yes_tx, no_tx = build_step_1_swap_txs(split_amount_in_wei, gno_amount_in_wei, price)
     steps.append((yes_tx, handle_yes_swap))
     steps.append((no_tx, handle_no_swap))
-
-    # Merge
     merge_tx = build_merge_tx(
         w3,
         client,
@@ -267,74 +254,32 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
         acct.address,
     )
     steps.append((merge_tx, handle_merge))
-
-    # Optional liquidation swap
     steps += add_conditional_sdai_liquidation_steps(
         liquidate_conditional_sdai_amount,
         handle_liquidate,
         handle_buy_sdai_yes,
         handle_merge_conditional_sdai,
     )
-
-    # Optional Balancer swap (sell GNO → sDAI) – may be empty
     if gno_to_sdai_txs:
         steps.append((gno_to_sdai_txs[0], handle_balancer))
 
-    # ------------------------------------------------------------------
-    # 3️⃣  Execute simulation + dispatch handlers
-    # ------------------------------------------------------------------
-
     bundle = [tx for tx, _ in steps]
-
     print("--- Prepared Bundle ---")
     print(bundle)
-
     result = client.simulate(bundle)
-
-    # Initialise swap-output placeholders and sDAI flow counters
-    amount_out_yes_wei = None  # From second simulation (GNO-YES → sDAI-YES)
-    amount_out_no_wei = None   # From third simulation (GNO-NO  → sDAI-NO)
-    sdai_in  = Decimal("0")
-    sdai_out = Decimal("0")
-
-
-    # Helper to decode uint256 output and pretty print
-    def extract_return(sim, amount_in_or_out_wei_local, fixed_kind):
-        tx = sim.get("transaction", {})
-        call_trace = tx.get("transaction_info", {}).get("call_trace", {})
-        output_hex = call_trace.get("output")
-        if output_hex and output_hex != "0x":
-            try:
-                returned_amount_wei = int(output_hex[2:], 16)
-            except ValueError:
-                return None
-
-            returned_amount = w3.from_wei(returned_amount_wei, "ether")
-
-            if fixed_kind == "in":
-                print("  Simulated amountOut:", returned_amount)
-                input_amount = w3.from_wei(amount_in_or_out_wei_local, "ether")
-                price = Decimal(returned_amount) / Decimal(input_amount)
-            else:
-                print("  Simulated amountIn:", returned_amount)
-                output_amount = w3.from_wei(amount_in_or_out_wei_local, "ether")
-                price = Decimal(output_amount) / Decimal(returned_amount)
-
-            print("  Simulated price:", price)
-            return returned_amount_wei
-        print("  No output data returned from simulation.")
-        return None
-
+    state = {
+        "amount_out_yes_wei": None,
+        "amount_out_no_wei": None,
+        "sdai_in": Decimal("0"),
+        "sdai_out": Decimal("0"),
+    }
     if result and result.get("simulation_results"):
         sims = result["simulation_results"]
-
         for idx, sim in enumerate(sims):
-            print(f"\n--- Simulation Result #{idx + 1} ---")
             if sim.get("error"):
-                print("Tenderly simulation error:", sim["error"].get("message", "Unknown error"))
+                print(sim["error"])
                 continue
-
-            tx = sim.get("transaction")
+            tx = sim.get("transaction", {})
             if not tx:
                 print("No transaction data in result.")
                 continue
@@ -342,23 +287,20 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
                 print("Transaction REVERTED.")
                 continue
             print("Swap transaction did NOT revert.")
-
-            # Call paired handler for this step
             if idx < len(steps):
                 _, handler = steps[idx]
-                handler(idx, sim)
+                state = handler(state, sim)
             else:
                 print("No handler defined for this tx.")
     else:
         print("Simulation failed or returned no results.")
-
-    # Return simulated outputs *plus* aggregated sDAI flows
+    sdai_in = split_amount + max(-liquidate_conditional_sdai_amount or 0, 0)
     return {
-        "amount_out_yes": w3.from_wei(amount_out_yes_wei, "ether") if amount_out_yes_wei else None,
-        "amount_out_no" : w3.from_wei(amount_out_no_wei , "ether") if amount_out_no_wei  else None,
+        "amount_out_yes": w3.from_wei(state["amount_out_yes_wei"], "ether") if state["amount_out_yes_wei"] else None,
+        "amount_out_no" : w3.from_wei(state["amount_out_no_wei"], "ether") if state["amount_out_no_wei"]  else None,
         "sdai_in" : sdai_in,
-        "sdai_out": sdai_out,
-        "sdai_net": sdai_out - sdai_in,
+        "sdai_out": state["sdai_out"],
+        "sdai_net": state["sdai_out"] - sdai_in,
     }
 
 
