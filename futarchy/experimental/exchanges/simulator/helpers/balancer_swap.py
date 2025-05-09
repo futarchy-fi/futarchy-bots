@@ -38,6 +38,7 @@ migrates liquidity.
 from __future__ import annotations
 
 import os
+import logging
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
@@ -45,6 +46,12 @@ from eth_typing import ChecksumAddress
 from web3 import Web3
 
 from .tenderly_api import TenderlyClient
+
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+
+logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 # Constants – update if the Balancer pool layout changes
@@ -215,7 +222,7 @@ def sell_gno_to_sdai(
     if result and result.get("simulation_results"):
         parse_swap_results(result["simulation_results"], w3)
     else:
-        print("Simulation failed or returned no results.")
+        logger.debug("Simulation failed or returned no results.")
     return result
 
 
@@ -236,19 +243,19 @@ def parse_swap_results(results: List[Dict[str, Any]], w3: Web3) -> Optional[Dict
             if len(results) == 1
             else f"Balancer Simulation Result #{idx + 1}"
         )
-        print(f"\n--- {header} ---")
+        logger.debug("--- %s ---", header)
 
         if sim.get("error"):
-            print("Tenderly simulation error:", sim["error"].get("message", "Unknown error"))
+            logger.debug("Tenderly simulation error: %s", sim["error"].get("message", "Unknown error"))
             continue
         tx = sim.get("transaction")
         if not tx:
-            print("No transaction data in result.")
+            logger.debug("No transaction data in result.")
             continue
         if tx.get("status") is False:
             info = tx.get("transaction_info", {})
             reason = info.get("error_message", info.get("revert_reason", "N/A"))
-            print("❌ swapExactIn REVERTED. Reason:", reason)
+            logger.debug("swapExactIn REVERTED. Reason: %s", reason)
             continue
 
         call_trace = tx.get("transaction_info", {}).get("call_trace", {})
@@ -264,7 +271,7 @@ def parse_swap_results(results: List[Dict[str, Any]], w3: Web3) -> Optional[Dict
             param_val = params[0]
 
         if not param_val:
-            print("Decoded params empty – cannot find paths.")
+            logger.debug("Decoded params empty – cannot find paths.")
             continue
 
         first_path = param_val[0] if isinstance(param_val, (list, tuple)) else next(iter(param_val.values()))
@@ -283,17 +290,17 @@ def parse_swap_results(results: List[Dict[str, Any]], w3: Web3) -> Optional[Dict
             "input_amount": _wei_to_eth(exact_amount_in),
             "output_amount": _wei_to_eth(output_wei),
         }
-        print("✅ swapExactIn succeeded.")
-        print("result_dict:", result_dict)
+        logger.debug("swapExactIn succeeded.")
+        logger.debug("result_dict: %s", result_dict)
         balance_changes = sim.get("balance_changes") or {}
         if balance_changes:
-            print("Balance changes:")
+            logger.debug("Balance changes:")
             for token_addr, diff in balance_changes.items():
                 human = _wei_to_eth(abs(int(diff)))
                 sign = "+" if int(diff) > 0 else "-"
-                print(f"  {token_addr}: {sign}{human}")
+                logger.debug("  %s: %s%s", token_addr, sign, human)
         else:
-            print("(No balance change info)")
+            logger.debug("(No balance change info)")
     return result_dict
 
 
@@ -304,6 +311,7 @@ def parse_swap_results(results: List[Dict[str, Any]], w3: Web3) -> Optional[Dict
 # -----------------------------------------------------------------------------
 
 def _build_w3_from_env() -> Web3:
+    """Return Web3 instance connected to the RPC endpoint in the GNOSIS_RPC_URL env var."""
     rpc_url = os.getenv("GNOSIS_RPC_URL") or os.getenv("RPC_URL")
     if rpc_url is None:
         raise EnvironmentError("Set GNOSIS_RPC_URL or RPC_URL in environment.")
@@ -342,10 +350,11 @@ def main():  # pragma: no cover
 
     tx = result["simulation_results"][0]["transaction"]
     if tx.get("status") is False:
-        print("Swap transaction reverted.")
+        logger.debug("Swap transaction reverted.")
     else:
-        print("Swap transaction did NOT revert.")
+        logger.debug("Swap transaction did NOT revert.")
 
 
 if __name__ == "__main__":  # pragma: no cover
+    logging.basicConfig(level=logging.DEBUG)
     main()

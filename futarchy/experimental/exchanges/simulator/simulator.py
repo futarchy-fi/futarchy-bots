@@ -57,9 +57,7 @@ def build_step_1_swap_steps(split_amount_in_wei, gno_amount_in_wei, price=1000):
     if gno_amount_in_wei is None:
         deadline = int(time.time()) + 600
         amount_in_max = int(split_amount_in_wei * 1.2)
-        # amount_out_expected = int(split_amount_in_wei / price)
-        amount_out_expected = 83891929876473596
-        amount_out_min = int(amount_out_expected * 0.9)
+        amount_out_min = 0
         sqrt_price_limit = 0
 
         yes_tx = build_exact_in_tx(
@@ -214,7 +212,6 @@ def handle_swap(label_kind: str, fixed_kind: str, amount_wei: int):
 
         returned_amount_wei = extract_return(sim, amount_wei, fixed_kind_lc)
         if fixed_kind_lc == "in" and returned_amount_wei is not None:
-            print("Setting amount_out_")
             if label_kind_lc == "yes":
                 state["amount_out_yes_wei"] = returned_amount_wei
                 state["amount_in_yes_wei"] = amount_wei
@@ -222,7 +219,6 @@ def handle_swap(label_kind: str, fixed_kind: str, amount_wei: int):
                 state["amount_out_no_wei"] = returned_amount_wei
                 state["amount_in_no_wei"] = amount_wei
         elif fixed_kind_lc == "out" and returned_amount_wei is not None:
-            print("Setting amount_in_")
             if label_kind_lc == "yes":
                 state["amount_in_yes_wei"] = returned_amount_wei
                 state["amount_out_yes_wei"] = amount_wei
@@ -302,8 +298,8 @@ def get_gno_yes_and_no_amounts_from_sdai_single(amount, gno_amount=None, liquida
         steps.append((gno_to_sdai_txs[0], handle_balancer))
 
     bundle = [tx for tx, _ in steps]
-    print("--- Prepared Bundle ---")
-    print(bundle)
+    # print("--- Prepared Bundle ---")
+    # print(bundle)
     result = client.simulate(bundle)
     sdai_in = Decimal(amount) + Decimal(max(-(liquidate_conditional_sdai_amount or 0), 0))
     state = {
@@ -329,7 +325,7 @@ def get_gno_yes_and_no_amounts_from_sdai_single(amount, gno_amount=None, liquida
             if idx < len(steps):
                 _, handler = steps[idx]
                 state = handler(state, sim)
-                print("State after handling:", state)
+                # print("State after handling:", state)
             else:
                 print("No handler defined for this tx.")
     else:
@@ -349,6 +345,7 @@ def get_gno_yes_and_no_amounts_from_sdai(amount):
     # liquidate_conditional_sdai_amount = float(sys.argv[3]) if len(sys.argv) > 3 else None
 
     print("STEP 1 ----------------")
+    print("Running:\nget_gno_yes_and_no_amounts_from_sdai_single({}, None, None)\n".format(amount))
     result = get_gno_yes_and_no_amounts_from_sdai_single(amount, None, None)
     print("STEP 1 result ----------------")
     print(result)
@@ -365,6 +362,7 @@ def get_gno_yes_and_no_amounts_from_sdai(amount):
 
     amount_out_limited = w3.from_wei(amount_out_limited_wei, "ether")  # gno_amount in ETH
 
+    print("Running:\nget_gno_yes_and_no_amounts_from_sdai_single({}, {}, None)\n".format(amount, amount_out_limited))
     result = get_gno_yes_and_no_amounts_from_sdai_single(amount, amount_out_limited, None)
     
     amount_in_yes_wei = result['amount_in_yes_wei']
@@ -374,7 +372,10 @@ def get_gno_yes_and_no_amounts_from_sdai(amount):
     print(result)
 
     print("STEP 3 ----------------")
-    liquidate_conditional_sdai_amount = amount_in_no_wei - amount_in_yes_wei
+    liquidate_conditional_sdai_amount_wei = amount_in_no_wei - amount_in_yes_wei
+    liquidate_conditional_sdai_amount = w3.from_wei(liquidate_conditional_sdai_amount_wei, "ether")
+
+    print("Running:\nget_gno_yes_and_no_amounts_from_sdai_single({}, {}, {})\n".format(amount, amount_out_limited, liquidate_conditional_sdai_amount))
     result = get_gno_yes_and_no_amounts_from_sdai_single(amount, amount_out_limited, liquidate_conditional_sdai_amount)
 
     sdai_in = result['sdai_in']

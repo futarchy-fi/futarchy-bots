@@ -1,10 +1,16 @@
 import os
 import requests
+import logging
 from typing import List
 from web3 import Web3
 
 BASE = "https://api.tenderly.co/api/v1"
 
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+
+logger = logging.getLogger(__name__)
 
 class TenderlyClient:
     def __init__(self, w3: Web3):
@@ -21,7 +27,7 @@ class TenderlyClient:
 
     # ---------- helpers ----------
 
-    def build_tx(self, to: str, data: str, sender: str, gas: int = 3_000_000, value: str = "0"):
+    def build_tx(self, to: str, data: str, sender: str, gas: int = 50_000_000, value: str = "0"):
         return {
             "network_id": str(self.w3.eth.chain_id),
             "from": sender,
@@ -54,18 +60,18 @@ class TenderlyClient:
 
         payload = {"simulations": enriched_txs}
 
-        print("--- Sending to Tenderly ---")
-        print(f"URL: {self.url}")
-        print(f"Headers: {self.headers}")
-        print(f"Payload: {payload}")
+        logger.debug("--- Sending to Tenderly ---")
+        logger.debug("URL: %s", self.url)
+        logger.debug("Headers: %s", self.headers)
+        logger.debug("Payload: %s", payload)
 
         response = requests.post(self.url, json=payload, headers=self.headers)
 
-        print("--- Received from Tenderly ---")
-        print(f"Status Code: {response.status_code}")
+        logger.debug("--- Received from Tenderly ---")
+        logger.debug("Status Code: %s", response.status_code)
 
         try:
             return response.json()
         except requests.exceptions.JSONDecodeError:
-            print("ERROR: Could not decode JSON response from Tenderly.")
+            logger.debug("ERROR: Could not decode JSON response from Tenderly.")
             return None

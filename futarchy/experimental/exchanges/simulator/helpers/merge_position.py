@@ -33,13 +33,16 @@ result = simulate_merge(
 ``` 
 """
 
-from typing import Dict, Any, List, Optional
 import os
+import logging
 from decimal import Decimal
+from typing import Any, Dict, List, Optional
 from web3 import Web3
 
 from futarchy.experimental.config.abis.futarchy import FUTARCHY_ROUTER_ABI
 from .tenderly_api import TenderlyClient
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "build_merge_tx",
@@ -98,41 +101,41 @@ def simulate_merge(
     if result and result.get("simulation_results"):
         parse_merge_results(result["simulation_results"], w3)
     else:
-        print("Simulation failed or returned no results.")
+        logger.debug("Simulation failed or returned no results.")
     return result
 
 
 def parse_merge_results(results: List[Dict[str, Any]], w3: Web3) -> None:
     """Pretty-print each simulation result from mergePositions bundle."""
     for idx, sim in enumerate(results):
-        print(f"\n--- Merge Simulation Result #{idx + 1} ---")
+        logger.debug("--- Merge Simulation Result #%s ---", idx + 1)
 
         if sim.get("error"):
-            print("Tenderly simulation error:", sim["error"].get("message", "Unknown error"))
+            logger.debug("Tenderly simulation error: %s", sim["error"].get("message", "Unknown error"))
             continue
 
         tx = sim.get("transaction")
         if not tx:
-            print("No transaction data in result.")
+            logger.debug("No transaction data in result.")
             continue
 
         if tx.get("status") is False:
             info = tx.get("transaction_info", {})
             reason = info.get("error_message", info.get("revert_reason", "N/A"))
-            print("❌ mergePositions REVERTED. Reason:", reason)
+            logger.debug("mergePositions REVERTED. Reason: %s", reason)
             continue
 
-        print("✅ mergePositions succeeded.")
+        logger.debug("mergePositions succeeded.")
 
         balance_changes = sim.get("balance_changes") or {}
         if balance_changes:
-            print("Balance changes:")
+            logger.debug("Balance changes:")
             for token_addr, diff in balance_changes.items():
                 human = Decimal(w3.from_wei(abs(int(diff)), "ether"))
                 sign = "+" if int(diff) > 0 else "-"
-                print(f"  {token_addr}: {sign}{human}")
+                logger.debug("  %s: %s%s", token_addr, sign, human)
         else:
-            print("(No balance change info)")
+            logger.debug("(No balance change info)")
 
 
 # ---------- CLI entry for quick testing ----------
@@ -173,12 +176,12 @@ def main():  # pragma: no cover
         "WALLET_ADDRESS/SENDER_ADDRESS": sender,
     }.items() if v is None]
     if missing:
-        print("❌ Missing env vars:", ", ".join(missing))
+        logger.debug("Missing env vars: %s", ", ".join(missing))
         return
 
     w3 = _build_w3_from_env()
     if not w3.is_connected():
-        print("❌ Could not connect to RPC endpoint.")
+        logger.debug("Could not connect to RPC endpoint.")
         return
 
     client = TenderlyClient(w3)

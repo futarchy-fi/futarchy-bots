@@ -1,5 +1,6 @@
 import os
 import time
+import logging
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 from web3 import Web3
@@ -14,6 +15,10 @@ router = w3.eth.contract(address=router_addr, abi=SWAPR_ROUTER_ABI)
 
 client = TenderlyClient(w3)
 
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+logger = logging.getLogger(__name__)
 
 def tx_exact_in(params, sender):
     data = router.encodeABI(fn_name="exactInputSingle", args=[params])
@@ -159,19 +164,19 @@ def parse_swap_results(
         else:
             header = f"SwapR Simulation Result #{idx + 1}"
 
-        print(f"\n--- {header} ---")
+        logger.debug("--- %s ---", header)
 
         if sim.get("error"):
-            print("Tenderly simulation error:", sim["error"].get("message", "Unknown error"))
+            logger.debug("Tenderly simulation error: %s", sim["error"].get("message", "Unknown error"))
             continue
 
         tx_resp = sim.get("transaction") or {}
         if tx_resp.get("status") is False:
             info = tx_resp.get("transaction_info", {})
-            print("❌ transaction REVERTED:", info.get("error_message", info.get("revert_reason", "N/A")))
+            logger.debug("transaction REVERTED. Reason: %s", info.get("error_message", info.get("revert_reason", "N/A")))
             continue
 
-        print("✅ swap succeeded.")
+        logger.debug("swap succeeded.")
 
         # Attempt to decode returned amount based on swap kind
         call_trace = tx_resp.get("transaction_info", {}).get("call_trace", {})
@@ -182,9 +187,9 @@ def parse_swap_results(
                 ret_wei = int(out_hex[2:66], 16)
                 human_out = _wei_to_eth(ret_wei)
                 if fixed == "in":
-                    print("  amountOut:", human_out)
+                    logger.debug("  amountOut: %s", human_out)
                 else:
-                    print("  amountIn:", human_out)
+                    logger.debug("  amountIn: %s", human_out)
             except Exception:  # noqa: BLE001
                 pass
 
@@ -193,7 +198,7 @@ def parse_swap_results(
         # ------------------------------------------------------------------ #
         router_call = _search_call_trace(call_trace, router.address)
         if router_call is None:
-            print("router call NOT found – cannot decode input")
+            logger.debug("router call NOT found – cannot decode input")
             continue
 
         # ------------------------------------------------------------------ #
@@ -201,10 +206,10 @@ def parse_swap_results(
         # ------------------------------------------------------------------ #
         call_input = router_call.get("input")
         if call_input and call_input != "0x":
-            print("router_call input:", call_input[:10], "…")
+            logger.debug("router_call input: %s…", call_input[:10])
             try:
                 func, params = router.decode_function_input(call_input)
-                print("decoded function:", func.fn_name)
+                logger.debug("decoded function: %s", func.fn_name)
                 # The decode result can be either a list/tuple or a dict:
                 inner = (
                     params[0]                       # positional (tuple/list)
@@ -229,16 +234,16 @@ def parse_swap_results(
                     }
 
                 # Debug: show the struct we just parsed
-                print("inner struct:", inner)
-                print("result_dict:", result_dict)
+                logger.debug("inner struct: %s", inner)
+                logger.debug("result_dict: %s", result_dict)
 
             except Exception as e:
-                print("decode_function_input exception:", e)
+                logger.debug("decode_function_input exception: %s", e)
 
         # Print balance changes when available
         for token, diff in (sim.get("balance_changes") or {}).items():
             sign = "+" if int(diff) > 0 else "-"
             human = _wei_to_eth(abs(int(diff)))
-            print(f"  {token}: {sign}{human}")
-    print(result_dict)
+            logger.debug("  %s: %s%s", token, sign, human)
+    logger.debug("result_dict final: %s", result_dict)
     return result_dict
