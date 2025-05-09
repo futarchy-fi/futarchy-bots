@@ -199,16 +199,20 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
 
     def handle_yes_swap(idx, sim):
         """Swap of GNO-YES → sDAI-YES (exact-out)."""
-        nonlocal amount_out_yes_wei
-        parse_swapr_results([sim], label="SwapR YES (exact-out)", fixed="out")
+        nonlocal amount_out_yes_wei, sdai_in
+        data = parse_swapr_results([sim], label="SwapR YES (exact-out)", fixed="out")
+        if data:
+            sdai_in += data["input_amount"]
         extracted = extract_return(sim, gno_amount_in_wei, "out")
         if extracted is not None:
             amount_out_yes_wei = extracted
 
     def handle_no_swap(idx, sim):
         """Swap of GNO-NO → sDAI-NO (exact-out)."""
-        nonlocal amount_out_no_wei
-        parse_swapr_results([sim], label="SwapR NO  (exact-out)", fixed="out")
+        nonlocal amount_out_no_wei, sdai_in
+        data = parse_swapr_results([sim], label="SwapR NO  (exact-out)", fixed="out")
+        if data:
+            sdai_in += data["input_amount"]
         extracted = extract_return(sim, gno_amount_in_wei, "out")
         if extracted is not None:
             amount_out_no_wei = extracted
@@ -217,16 +221,26 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
         print("MergePositions tx parsed – nothing to extract.")
 
     def handle_liquidate(idx, sim):
-        parse_swapr_results([sim], label="SwapR Liquidate YES→sDAI (exact-in)", fixed="in")
+        nonlocal sdai_in, sdai_out
+        data = parse_swapr_results([sim], label="SwapR Liquidate YES→sDAI (exact-in)", fixed="in")
+        if data:
+            sdai_in  += data["input_amount"]
+            sdai_out += data["output_amount"]
 
     def handle_buy_sdai_yes(idx, sim):
-        parse_swapr_results([sim], label="SwapR buy sDAI-YES (exact-out)", fixed="out")
+        nonlocal sdai_in
+        data = parse_swapr_results([sim], label="SwapR buy sDAI-YES (exact-out)", fixed="out")
+        if data:
+            sdai_in += data["input_amount"]
 
     def handle_merge_conditional_sdai(idx, sim):
         print("Merge conditional sDAI positions parsed – nothing to extract.")
 
     def handle_balancer(idx, sim):
-        parse_swap_results([sim], w3)
+        nonlocal sdai_out
+        data = parse_swap_results([sim], w3)
+        if data:
+            sdai_out += data["output_amount"]
 
     # ------------------------------------------------------------------
     # 2️⃣  Build the *steps* list declaratively: (tx_dict, handler) pairs
@@ -277,9 +291,12 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
 
     result = client.simulate(bundle)
 
-    # Initialize placeholders for the swap outputs we care about
+    # Initialise swap-output placeholders and sDAI flow counters
     amount_out_yes_wei = None  # From second simulation (GNO-YES → sDAI-YES)
-    amount_out_no_wei = None  # From third simulation (GNO-NO  → sDAI-NO)
+    amount_out_no_wei = None   # From third simulation (GNO-NO  → sDAI-NO)
+    sdai_in  = Decimal("0")
+    sdai_out = Decimal("0")
+
 
     # Helper to decode uint256 output and pretty print
     def extract_return(sim, amount_in_or_out_wei_local, fixed_kind):
@@ -335,10 +352,13 @@ def get_gno_yes_and_no_amounts_from_sdai(split_amount, gno_amount=None, liquidat
     else:
         print("Simulation failed or returned no results.")
 
-    # Return simulated output amounts for GNO-YES and GNO-NO swaps
+    # Return simulated outputs *plus* aggregated sDAI flows
     return {
         "amount_out_yes": w3.from_wei(amount_out_yes_wei, "ether") if amount_out_yes_wei else None,
-        "amount_out_no": w3.from_wei(amount_out_no_wei, "ether") if amount_out_no_wei else None,
+        "amount_out_no" : w3.from_wei(amount_out_no_wei , "ether") if amount_out_no_wei  else None,
+        "sdai_in" : sdai_in,
+        "sdai_out": sdai_out,
+        "sdai_net": sdai_out - sdai_in,
     }
 
 
@@ -355,7 +375,12 @@ if __name__ == "__main__":
     liquidate_conditional_sdai_amount = float(sys.argv[3])
     result = get_gno_yes_and_no_amounts_from_sdai(amount, gno_amount, liquidate_conditional_sdai_amount)
     print(
-        "(amount_out_yes, amount_out_no) = ",
-        (result["amount_out_yes"], result["amount_out_no"]),
+        "(amount_out_yes = {}   , amount_out_no = {}   , sdai_in = {}   , sdai_out = {}   , sdai_net = {})".format(
+            result["amount_out_yes"],
+            result["amount_out_no"],
+            result["sdai_in"],
+            result["sdai_out"],
+            result["sdai_net"],
+        ),
     )
 # python -m futarchy.experimental.exchanges.simulator.simulator <amount> <gno_amount> <liquidate_conditional_sdai_amount>

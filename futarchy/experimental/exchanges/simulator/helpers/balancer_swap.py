@@ -68,8 +68,6 @@ MAX_DEADLINE = 9007199254740991
 # ABI loading
 # -----------------------------------------------------------------------------
 
-# In production put the full ABI JSON somewhere in your project and import here.
-# We only need the function signature for encodeABI so an abbreviated ABI is fine.
 BALANCER_ROUTER_ABI: List[Dict[str, Any]] = [
     {
         "type": "function",
