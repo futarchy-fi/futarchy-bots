@@ -233,6 +233,13 @@ def parse_swap_results(results: List[Dict[str, Any]], w3: Web3) -> Optional[Dict
     """Pretty-print and return {'input_amount', 'output_amount'} for each result."""
     result_dict: Optional[Dict[str, Decimal]] = None
     for idx, sim in enumerate(results):
+        header = (
+            "Balancer Simulation Result"
+            if len(results) == 1
+            else f"Balancer Simulation Result #{idx + 1}"
+        )
+        print(f"\n--- {header} ---")
+
         if sim.get("error"):
             print("Tenderly simulation error:", sim["error"].get("message", "Unknown error"))
             continue
@@ -245,52 +252,40 @@ def parse_swap_results(results: List[Dict[str, Any]], w3: Web3) -> Optional[Dict
             reason = info.get("error_message", info.get("revert_reason", "N/A"))
             print("❌ swapExactIn REVERTED. Reason:", reason)
             continue
-        # ------------------------------------------------------------------ #
-        # 1. Walk trace → router call                                        #
-        # ------------------------------------------------------------------ #
+
         call_trace = tx.get("transaction_info", {}).get("call_trace", {})
-        router      = _get_router(w3)
+        router = _get_router(w3)
         router_call = _search_call_trace(call_trace, router.address)
         if router_call is None:
-            print("Router call not found in trace.")
             continue
-        # ------------------------------------------------------------------ #
-        # 2. Decode call INPUT                                               #
-        # ------------------------------------------------------------------ #
         func, params = router.decode_function_input(router_call["input"])
-        # Extract exactAmountIn from the first path element, handling both tuple- and dict-style decodes.
+
         if isinstance(params, dict):
-            # Grab the single positional arg ("paths") if params is a mapping
             param_val = next(iter(params.values()))
         else:
-            param_val = params[0]  # positional list/tuple
+            param_val = params[0]
 
         if not param_val:
             print("Decoded params empty – cannot find paths.")
             continue
 
-        # param_val is paths: List[SwapPathExactAmountIn]
         first_path = param_val[0] if isinstance(param_val, (list, tuple)) else next(iter(param_val.values()))
-        # SwapPath tuple: (tokenIn, steps, exactAmountIn, minAmountOut)
         if isinstance(first_path, (list, tuple)):
             exact_amount_in = first_path[2]
         else:
             exact_amount_in = first_path.get("exactAmountIn") or first_path.get("amountIn")
 
         if exact_amount_in is None:
-            print("Could not extract exactAmountIn from decoded input.")
             continue
 
-        # ------------------------------------------------------------------ #
-        # 3. Decode call OUTPUT                                              #
-        # ------------------------------------------------------------------ #
-        decoded      = w3.codec.decode(["uint256[]", "address[]", "uint256[]"],
-                                        bytes.fromhex(router_call["output"][2:]))
-        output_wei   = decoded[2][0]          # amountsOut[0]
+        decoded = w3.codec.decode(["uint256[]", "address[]", "uint256[]"],
+                                  bytes.fromhex(router_call["output"][2:]))
+        output_wei = decoded[2][0]
         result_dict = {
-            "input_amount":  _wei_to_eth(exact_amount_in),
+            "input_amount": _wei_to_eth(exact_amount_in),
             "output_amount": _wei_to_eth(output_wei),
         }
+        print("✅ swapExactIn succeeded.")
         print("result_dict:", result_dict)
         balance_changes = sim.get("balance_changes") or {}
         if balance_changes:
