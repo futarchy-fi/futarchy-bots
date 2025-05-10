@@ -392,32 +392,42 @@ def get_gno_yes_and_no_amounts_from_sdai(amount):
     # {'amount_out_yes_wei': 79795754040190069, 'amount_out_no_wei': 79795754040190069, 'sdai_out': Decimal('8.817678887877001605'), 'sdai_in': Decimal('10'), 'amount_in_yes_wei': 9321050584772429194, 'amount_in_no_wei': 9999999999999999964}
 
 
-if __name__ == "__main__legacy":
-    import sys
-
-    if len(sys.argv) < 2:
-        print(
-            "Usage: python -m futarchy.experimental.exchanges.simulator.simulator <amount> [<gno_amount>] [<liquidate_conditional_sdai_amount>]"
-        )
-        sys.exit(1)
-    amount = float(sys.argv[1])
-    gno_amount = float(sys.argv[2]) if len(sys.argv) > 2 else None
-    liquidate_conditional_sdai_amount = float(sys.argv[3]) if len(sys.argv) > 3 else None
-    result = get_gno_yes_and_no_amounts_from_sdai_single(amount, gno_amount, liquidate_conditional_sdai_amount)
-    print("----------------")
-    print(result)
-
-
 if __name__ == "__main__":
     import sys
 
-    if len(sys.argv) < 2:
-        print(
-            "Usage: python -m futarchy.experimental.exchanges.simulator.simulator <amount>"
-        )
+    num_script_args = len(sys.argv) - 1
+
+    if num_script_args == 0:
+        print("Usage: python -m futarchy.experimental.exchanges.simulator.simulator <amount> [<gno_amount>] [<liquidate_conditional_sdai_amount>]")
         sys.exit(1)
+    
+    # All valid paths require at least the first argument 'amount'
     amount = float(sys.argv[1])
-    result = get_gno_yes_and_no_amounts_from_sdai(amount)
-    # print("----------------")
-    # print(result)
-# python -m futarchy.experimental.exchanges.simulator.simulator <amount> [<gno_amount>] [<liquidate_conditional_sdai_amount>]
+
+    if num_script_args == 1:
+        # Corresponds to the original "main" block's behavior (1 argument)
+        # print(f"Debug: Running current main logic with amount: {amount}") # Optional debug print
+        result = get_gno_yes_and_no_amounts_from_sdai(amount)
+        # The function get_gno_yes_and_no_amounts_from_sdai handles its own printing.
+
+    elif num_script_args == 2:
+        # Corresponds to the "main_legacy" block's behavior with 2 arguments
+        gno_amount = float(sys.argv[2])
+        # print(f"Debug: Running legacy logic with amount: {amount}, gno_amount: {gno_amount}") # Optional debug print
+        result = get_gno_yes_and_no_amounts_from_sdai_single(amount, gno_amount, None)
+        print("----------------") # As per original legacy main
+        print(result)            # As per original legacy main
+        
+    elif num_script_args == 3:
+        # Corresponds to the "main_legacy" block's behavior with 3 arguments
+        gno_amount = float(sys.argv[2])
+        liquidate_conditional_sdai_amount = float(sys.argv[3])
+        # print(f"Debug: Running legacy logic with amount: {amount}, gno_amount: {gno_amount}, liquidate: {liquidate_conditional_sdai_amount}") # Optional debug print
+        result = get_gno_yes_and_no_amounts_from_sdai_single(amount, gno_amount, liquidate_conditional_sdai_amount)
+        print("----------------") # As per original legacy main
+        print(result)            # As per original legacy main
+        
+    else: # num_script_args > 3 or any other unexpected count
+        print("Error: Invalid number of arguments.")
+        print("Usage: python -m futarchy.experimental.exchanges.simulator.simulator <amount> [<gno_amount>] [<liquidate_conditional_sdai_amount>]")
+        sys.exit(1)
