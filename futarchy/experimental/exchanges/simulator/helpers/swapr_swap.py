@@ -9,6 +9,8 @@ from futarchy.experimental.config.abis.swapr import SWAPR_ROUTER_ABI
 from .tenderly_api import TenderlyClient
 
 w3 = Web3(Web3.HTTPProvider(os.environ["RPC_URL"]))
+# Keccak topic for ERC20 Transfer(address,address,uint256)
+ERC20_TRANSFER_TOPIC = Web3.keccak(text="Transfer(address,address,uint256)").hex()
 
 router_addr = w3.to_checksum_address(os.environ["SWAPR_ROUTER_ADDRESS"])
 router = w3.eth.contract(address=router_addr, abi=SWAPR_ROUTER_ABI)
@@ -41,7 +43,8 @@ __all__ = [
     "build_exact_out_tx",
     "simulate_exact_in",
     "simulate_exact_out",
-    "parse_swap_results",
+    "parse_simulated_swap_results",
+    "parse_broadcasted_swap_results",
     # legacy wrappers
     "tx_exact_in",
     "tx_exact_out",
@@ -143,7 +146,7 @@ def _wei_to_eth(value: int) -> Decimal:
     return Decimal(Web3.from_wei(value, "ether"))
 
 
-def parse_swap_results(
+def parse_simulated_swap_results(
     results: List[Dict[str, Any]],
     w3_inst: Optional[Web3] = None,
     label: Optional[str] = None,
@@ -247,3 +250,81 @@ def parse_swap_results(
             logger.debug("  %s: %s%s", token, sign, human)
     logger.debug("result_dict final: %s", result_dict)
     return result_dict
+
+
+# --------------------------------------------------------------------------- #
+# On-chain result parser                                                      #
+# --------------------------------------------------------------------------- #
+
+
+def parse_broadcasted_swap_results(tx_hash: str) -> Optional[Dict[str, Decimal]]:
+    """Parse an already **broadcasted** SwapR `exactInputSingle` swap.
+
+    Given a transaction hash, this function will:
+
+    1. Fetch the transaction and its receipt from the chain.
+    2. Decode the router call to recover the *amountIn* (input) and metadata.
+    3. Scan the receipt logs for a matching ``Transfer`` event of ``tokenOut``
+       sent to the designated recipient, summing up the received amount.
+
+    It returns a dict: ``{"input_amount": Decimal, "output_amount": Decimal}``
+    or ``None`` if the tx is not a successful SwapR `exactInputSingle` swap.
+    """
+
+    tx = w3.eth.get_transaction(tx_hash)
+    if not tx or tx.to.lower() != router.address.lower():
+        return None
+
+    receipt = w3.eth.get_transaction_receipt(tx_hash)
+    if receipt.status != 1:
+        # Tx reverted or failed
+        return None
+
+    # ------------------------------------------------------------------ #
+    # Decode the router call                                             #
+    # ------------------------------------------------------------------ #
+    try:
+        func_obj, func_params = router.decode_function_input(tx.input)
+    except Exception:
+        return None
+
+    if func_obj.fn_name != "exactInputSingle":
+        return None
+
+    # "exactInputSingle" has a single struct parameter
+    inner = (
+        func_params[0] if not isinstance(func_params, dict) else next(iter(func_params.values()))
+    )
+
+    amount_in_wei = inner[4] if isinstance(inner, (list, tuple)) else inner["amountIn"]
+    token_out     = inner[1] if isinstance(inner, (list, tuple)) else inner["tokenOut"]
+    recipient     = inner[2] if isinstance(inner, (list, tuple)) else inner["recipient"]
+
+    # ------------------------------------------------------------------ #
+    # Locate Transfer(tokenOut -> recipient) in the receipt logs         #
+    # ------------------------------------------------------------------ #
+    output_wei = 0
+    for log in receipt.logs:
+        if not log.topics or log.topics[0].hex().lower() != ERC20_TRANSFER_TOPIC.lower():
+            continue
+
+        # topics[2] == "to" (indexed)
+        if len(log.topics) < 3:
+            continue
+
+        to_addr = "0x" + log.topics[2].hex()[26:]
+        if to_addr.lower() == recipient.lower() and log.address.lower() == token_out.lower():
+            # log.data may be HexBytes – convert robustly
+            if hasattr(log.data, "hex"):
+                transferred = int(log.data.hex(), 16)
+            else:
+                transferred = int(log.data, 16)
+            output_wei += transferred
+
+    # ------------------------------------------------------------------ #
+    # Build result dict                                                  #
+    # ------------------------------------------------------------------ #
+    return {
+        "input_amount": _wei_to_eth(amount_in_wei),
+        "output_amount": _wei_to_eth(output_wei),
+    }

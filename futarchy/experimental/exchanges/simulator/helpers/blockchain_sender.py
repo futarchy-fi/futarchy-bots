@@ -1,4 +1,5 @@
 import os
+import sys
 from web3 import Web3
 from eth_account import Account
 from typing import Optional
@@ -64,3 +65,70 @@ def send_tenderly_tx_onchain(tenderly_tx: dict, value: int = 0, nonce: Optional[
 
     signed_tx = acct.sign_transaction(tx)
     return w3.eth.send_raw_transaction(signed_tx.rawTransaction).hex()
+
+
+# --------------------------------------------------------------------------- #
+# Minimal CLI helper                                                           #
+# --------------------------------------------------------------------------- #
+
+
+def main() -> None:  # noqa: D401
+    """Quick-and-dirty CLI for SwapR exactInputSingle broadcast.
+
+    Usage::
+
+        python -m futarchy.experimental.exchanges.simulator.helpers.blockchain_sender \
+            swapr_exact_in <token_in> <token_out> <amount_in_wei> <amount_out_min_wei>
+    """
+    # Lazily import to avoid circular deps when used as lib
+    from futarchy.experimental.exchanges.simulator.helpers.swapr_swap import (
+        build_exact_in_tx,
+        parse_broadcasted_swap_results,
+        w3 as local_w3,
+    )
+
+    if len(sys.argv) < 2 or sys.argv[1] != "swapr_exact_in":
+        print("Nothing to do – pass 'swapr_exact_in' for SwapR exactInputSingle broadcast.")
+        return
+
+    if len(sys.argv) != 6:
+        print(
+            "Usage: swapr_exact_in <token_in> <token_out> <amount_in_wei> <amount_out_min_wei>",
+        )
+        return
+
+    _, _flag, token_in, token_out, amount_in, amount_out_min = sys.argv
+
+    token_in  = local_w3.to_checksum_address(token_in)
+    token_out = local_w3.to_checksum_address(token_out)
+
+    amount_in_wei       = int(amount_in)
+    amount_out_min_wei  = int(amount_out_min)
+
+    # ------------------------------------------------------------------ #
+    # Build & broadcast                                                 #
+    # ------------------------------------------------------------------ #
+    tx_dict = build_exact_in_tx(
+        token_in,
+        token_out,
+        amount_in_wei,
+        amount_out_min_wei,
+        acct.address,
+    )
+
+    print("Broadcasting…")
+    tx_hash = send_tenderly_tx_onchain(tx_dict)
+    print("Tx hash:", tx_hash)
+
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    print("Status:", receipt.status)
+
+    # ------------------------------------------------------------------ #
+    # Parse on-chain result                                             #
+    # ------------------------------------------------------------------ #
+    result = parse_broadcasted_swap_results(tx_hash)
+    print("Swap result:", result)
+
+
+if __name__ == "__main__":
+    main()
