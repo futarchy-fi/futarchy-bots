@@ -257,7 +257,11 @@ def parse_simulated_swap_results(
 # --------------------------------------------------------------------------- #
 
 
-def parse_broadcasted_swap_results(tx_hash: str) -> Optional[Dict[str, Decimal]]:
+def parse_broadcasted_swap_results(
+    tx_hash: str,
+    *,
+    fixed: str = "in",
+) -> Optional[Dict[str, Decimal]]:
     """Parse an already **broadcasted** SwapR `exactInputSingle` swap.
 
     Given a transaction hash, this function will:
@@ -267,8 +271,22 @@ def parse_broadcasted_swap_results(tx_hash: str) -> Optional[Dict[str, Decimal]]
     3. Scan the receipt logs for a matching ``Transfer`` event of ``tokenOut``
        sent to the designated recipient, summing up the received amount.
 
-    It returns a dict: ``{"input_amount": Decimal, "output_amount": Decimal}``
-    or ``None`` if the tx is not a successful SwapR `exactInputSingle` swap.
+    Parameters
+    ----------
+    tx_hash : str
+        Hash of the already broadcasted transaction.
+    fixed : {"in", "out"}, optional
+        Indicates which side of the swap was fixed:
+        ``"in"``  → exactInputSingle (default)
+        ``"out"`` → exactOutputSingle – the result dict will be flipped so that
+        ``input_amount`` holds the *fixed* amount (exact-out target) and
+        ``output_amount`` the actual cost.
+
+    Returns
+    -------
+    Optional[Dict[str, Decimal]]
+        ``{"input_amount": Decimal, "output_amount": Decimal}``, or ``None`` on
+        failure / unsupported tx.
     """
 
     tx = w3.eth.get_transaction(tx_hash)
@@ -288,43 +306,70 @@ def parse_broadcasted_swap_results(tx_hash: str) -> Optional[Dict[str, Decimal]]
     except Exception:
         return None
 
-    if func_obj.fn_name != "exactInputSingle":
+    func_name = func_obj.fn_name
+    if func_name not in ("exactInputSingle", "exactOutputSingle"):
         return None
 
-    # "exactInputSingle" has a single struct parameter
-    inner = (
-        func_params[0] if not isinstance(func_params, dict) else next(iter(func_params.values()))
-    )
-
-    amount_in_wei = inner[4] if isinstance(inner, (list, tuple)) else inner["amountIn"]
-    token_out     = inner[1] if isinstance(inner, (list, tuple)) else inner["tokenOut"]
-    recipient     = inner[2] if isinstance(inner, (list, tuple)) else inner["recipient"]
+    # Both variants receive a single struct argument – fetch it agnostic of style
+    inner = func_params[0] if not isinstance(func_params, dict) else next(iter(func_params.values()))
 
     # ------------------------------------------------------------------ #
-    # Locate Transfer(tokenOut -> recipient) in the receipt logs         #
+    # exactInputSingle  → fixed input, measure output                    #
+    # exactOutputSingle → fixed output, measure input cost              #
     # ------------------------------------------------------------------ #
-    output_wei = 0
-    for log in receipt.logs:
-        if not log.topics or log.topics[0].hex().lower() != ERC20_TRANSFER_TOPIC.lower():
-            continue
+    if func_name == "exactInputSingle":
+        amount_in_wei = inner[4] if isinstance(inner, (list, tuple)) else inner["amountIn"]
+        token_out     = inner[1] if isinstance(inner, (list, tuple)) else inner["tokenOut"]
+        recipient     = inner[2] if isinstance(inner, (list, tuple)) else inner["recipient"]
 
-        # topics[2] == "to" (indexed)
-        if len(log.topics) < 3:
-            continue
+        # Sum all Transfer(tokenOut → recipient) events to compute actual received amount
+        output_wei = 0
+        for log in receipt.logs:
+            if not log.topics or log.topics[0].hex().lower() != ERC20_TRANSFER_TOPIC.lower():
+                continue
+            if len(log.topics) < 3:
+                continue
+            to_addr = "0x" + log.topics[2].hex()[26:]
+            if to_addr.lower() == recipient.lower() and log.address.lower() == token_out.lower():
+                transferred = int(log.data.hex(), 16) if hasattr(log.data, "hex") else int(log.data, 16)
+                output_wei += transferred
 
-        to_addr = "0x" + log.topics[2].hex()[26:]
-        if to_addr.lower() == recipient.lower() and log.address.lower() == token_out.lower():
-            # log.data may be HexBytes – convert robustly
-            if hasattr(log.data, "hex"):
-                transferred = int(log.data.hex(), 16)
-            else:
-                transferred = int(log.data, 16)
-            output_wei += transferred
+        result: Dict[str, Decimal] = {
+            "input_amount":  _wei_to_eth(amount_in_wei),
+            "output_amount": _wei_to_eth(output_wei),
+        }
+
+    else:  # exactOutputSingle – fixed output
+        amount_out_wei = inner[5] if isinstance(inner, (list, tuple)) else inner["amountOut"]
+        token_in       = inner[0] if isinstance(inner, (list, tuple)) else inner["tokenIn"]
+        sender         = tx["from"]
+
+        # Sum all Transfer(sender → tokenIn) events to compute actual cost
+        input_wei = 0
+        for log in receipt.logs:
+            if not log.topics or log.topics[0].hex().lower() != ERC20_TRANSFER_TOPIC.lower():
+                continue
+            if log.address.lower() != token_in.lower():
+                continue
+            if len(log.topics) < 2:
+                continue
+            from_addr = "0x" + log.topics[1].hex()[26:]
+            if from_addr.lower() == sender.lower():
+                transferred = int(log.data.hex(), 16) if hasattr(log.data, "hex") else int(log.data, 16)
+                input_wei += transferred
+
+        result = {
+            "input_amount":  _wei_to_eth(input_wei),
+            "output_amount": _wei_to_eth(amount_out_wei),
+        }
 
     # ------------------------------------------------------------------ #
-    # Build result dict                                                  #
+    # Flip dict when caller specifies fixed="out"                        #
     # ------------------------------------------------------------------ #
-    return {
-        "input_amount": _wei_to_eth(amount_in_wei),
-        "output_amount": _wei_to_eth(output_wei),
-    }
+    if fixed.lower() == "out":
+        result = {
+            "input_amount":  result["output_amount"],
+            "output_amount": result["input_amount"],
+        }
+
+    return result

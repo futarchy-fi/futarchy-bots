@@ -83,51 +83,94 @@ def main() -> None:  # noqa: D401
     # Lazily import to avoid circular deps when used as lib
     from futarchy.experimental.exchanges.simulator.helpers.swapr_swap import (
         build_exact_in_tx,
-        parse_broadcasted_swap_results,
-        w3 as local_w3,
+        build_exact_out_tx,
+        parse_broadcasted_swap_results as parse_swapr_broadcasted_swap_results,
     )
+    from futarchy.experimental.exchanges.simulator.helpers.balancer_swap import (
+        build_sell_gno_to_sdai_swap_tx,
+        parse_broadcasted_swap_results as parse_balancer_broadcasted_swap_results,
+        SDAI,
+        GNO,
+    )
+    from futarchy.experimental.exchanges.simulator.helpers.tenderly_api import TenderlyClient
 
-    if len(sys.argv) < 2 or sys.argv[1] != "swapr_exact_in":
-        print("Nothing to do – pass 'swapr_exact_in' for SwapR exactInputSingle broadcast.")
+    argv = sys.argv
+    if len(argv) < 2 or argv[1] not in ("swapr_exact_in", "swapr_exact_out", "balancer_exact_in"):
+        print("Nothing to do – pass 'swapr_exact_in', 'swapr_exact_out', or 'balancer_exact_in' for SwapR/Balancer broadcast.")
         return
 
-    if len(sys.argv) != 6:
-        print(
-            "Usage: swapr_exact_in <token_in> <token_out> <amount_in_wei> <amount_out_min_wei>",
+    if argv[1] == "swapr_exact_in":
+        if len(argv) != 6:
+            print("Usage: swapr_exact_in <token_in> <token_out> <amount_in_wei> <amount_out_min_wei>")
+            return
+        _, _flag, token_in, token_out, amount_in, amount_out_min = argv
+        token_in  = w3.to_checksum_address(token_in)
+        token_out = w3.to_checksum_address(token_out)
+        amount_in_wei       = int(amount_in)
+        amount_out_min_wei  = int(amount_out_min)
+        tx_dict = build_exact_in_tx(
+            token_in,
+            token_out,
+            amount_in_wei,
+            amount_out_min_wei,
+            acct.address,
         )
-        return
+        print("Broadcasting exact-in…")
+        tx_hash = send_tenderly_tx_onchain(tx_dict)
+        print("Tx hash:", tx_hash)
+        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        print("Status:", receipt.status)
+        result = parse_swapr_broadcasted_swap_results(tx_hash, fixed="in")
+        print("Swap result:", result)
 
-    _, _flag, token_in, token_out, amount_in, amount_out_min = sys.argv
-
-    token_in  = local_w3.to_checksum_address(token_in)
-    token_out = local_w3.to_checksum_address(token_out)
-
-    amount_in_wei       = int(amount_in)
-    amount_out_min_wei  = int(amount_out_min)
-
-    # ------------------------------------------------------------------ #
-    # Build & broadcast                                                 #
-    # ------------------------------------------------------------------ #
-    tx_dict = build_exact_in_tx(
-        token_in,
-        token_out,
-        amount_in_wei,
-        amount_out_min_wei,
-        acct.address,
-    )
-
-    print("Broadcasting…")
-    tx_hash = send_tenderly_tx_onchain(tx_dict)
-    print("Tx hash:", tx_hash)
-
-    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print("Status:", receipt.status)
-
-    # ------------------------------------------------------------------ #
-    # Parse on-chain result                                             #
-    # ------------------------------------------------------------------ #
-    result = parse_broadcasted_swap_results(tx_hash)
-    print("Swap result:", result)
+    elif argv[1] == "swapr_exact_out":
+        if len(argv) != 6:
+            print("Usage: swapr_exact_out <token_in> <token_out> <amount_out_wei> <amount_in_max_wei>")
+            return
+        _, _flag, token_in, token_out, amount_out, amount_in_max = argv
+        token_in  = w3.to_checksum_address(token_in)
+        token_out = w3.to_checksum_address(token_out)
+        amount_out_wei  = int(amount_out)
+        amount_in_max_wei = int(amount_in_max)
+        tx_dict = build_exact_out_tx(
+            token_in,
+            token_out,
+            amount_out_wei,
+            amount_in_max_wei,
+            acct.address,
+        )
+        print("Broadcasting exact-out…")
+        tx_hash = send_tenderly_tx_onchain(tx_dict)
+        print("Tx hash:", tx_hash)
+        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        print("Status:", receipt.status)
+        result = parse_swapr_broadcasted_swap_results(tx_hash, fixed="out")
+        print("Swap result:", result)
+    elif argv[1] == "balancer_exact_in":
+        # Usage: balancer_exact_in <amount_in_wei>
+        if len(argv) != 3:
+            print("Usage: balancer_exact_in <amount_in_wei>")
+            return
+        _, _flag, amount_in = argv
+        amount_in_wei = int(amount_in)
+        # Build tx using Balancer helper
+        # Use the same w3 and sender as Swapr for consistency
+        sender = acct.address
+        client = TenderlyClient(w3)
+        tx_dict = build_sell_gno_to_sdai_swap_tx(
+            w3,
+            client,
+            amount_in_wei,
+            1,
+            sender,
+        )
+        print("Broadcasting Balancer exact-in…")
+        tx_hash = send_tenderly_tx_onchain(tx_dict)
+        print("Tx hash:", tx_hash)
+        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        print("Status:", receipt.status)
+        result = parse_balancer_broadcasted_swap_results(tx_hash)
+        print("Swap result:", result)
 
 
 if __name__ == "__main__":

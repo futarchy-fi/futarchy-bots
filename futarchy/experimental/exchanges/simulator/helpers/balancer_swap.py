@@ -46,6 +46,8 @@ from eth_typing import ChecksumAddress
 from web3 import Web3
 
 from .tenderly_api import TenderlyClient
+# Keccak topic for ERC20 Transfer(address,address,uint256)
+ERC20_TRANSFER_TOPIC = Web3.keccak(text="Transfer(address,address,uint256)").hex()
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -118,7 +120,8 @@ BALANCER_ROUTER_ABI: List[Dict[str, Any]] = [
 __all__ = [
     "build_sell_gno_to_sdai_swap_tx",
     "sell_gno_to_sdai",
-    "parse_swap_results",
+    "parse_simulated_swap_results",
+    "parse_broadcasted_swap_results",
     "_search_call_trace",
 ]
 
@@ -220,7 +223,7 @@ def sell_gno_to_sdai(
 
     result = client.simulate([tx])
     if result and result.get("simulation_results"):
-        parse_swap_results(result["simulation_results"], w3)
+        parse_simulated_swap_results(result["simulation_results"], w3)
     else:
         logger.debug("Simulation failed or returned no results.")
     return result
@@ -233,8 +236,65 @@ def sell_gno_to_sdai(
 def _wei_to_eth(value: int) -> Decimal:
     return Decimal(Web3.from_wei(value, "ether"))
 
+# --------------------------------------------------------------------------- #
+# On-chain result parser (broadcasted swaps)                                  #
+# --------------------------------------------------------------------------- #
+def parse_broadcasted_swap_results(tx_hash: str) -> Optional[Dict[str, Decimal]]:
+    """
+    Given a *broadcasted* Balancer ``swapExactIn`` tx hash, return
+    ``{"input_amount": Decimal, "output_amount": Decimal}``
+    (values in ether units). Mirrors the semantics of the helper in
+    ``swapr_swap.py`` so the same handlers work for either exchange.
+    """
 
-def parse_swap_results(results: List[Dict[str, Any]], w3: Web3) -> Optional[Dict[str, Decimal]]:
+    w3 = _build_w3_from_env()
+    router = _get_router(w3)
+
+    tx = w3.eth.get_transaction(tx_hash)
+    if not tx or tx.to.lower() != router.address.lower():
+        return None
+
+    receipt = w3.eth.get_transaction_receipt(tx_hash)
+    if receipt.status != 1:  # reverted / failed
+        return None
+
+    # ------------------------------------------------------------------ #
+    # Decode calldata to fetch exactAmountIn                             #
+    # ------------------------------------------------------------------ #
+    func_obj, func_params = router.decode_function_input(tx.input)
+    if func_obj.fn_name != "swapExactIn":
+        return None
+
+    paths = (
+        func_params[0]                      # positional
+        if not isinstance(func_params, dict)
+        else next(iter(func_params.values()))  # dict
+    )
+    first_path = paths[0]
+    exact_in_wei = first_path[2] if isinstance(first_path, (list, tuple)) else first_path["exactAmountIn"]
+
+    # ------------------------------------------------------------------ #
+    # Locate Transfer(SDAI -> sender) in logs                            #
+    # ------------------------------------------------------------------ #
+    sender = tx["from"]
+    output_wei = 0
+    for log in receipt.logs:
+        if not log.topics or log.topics[0].hex().lower() != ERC20_TRANSFER_TOPIC.lower():
+            continue
+        if len(log.topics) < 3:
+            continue
+        to_addr = "0x" + log.topics[2].hex()[26:]
+        if to_addr.lower() == sender.lower() and log.address.lower() == SDAI.lower():
+            transferred = int(log.data.hex(), 16) if hasattr(log.data, "hex") else int(log.data, 16)
+            output_wei += transferred
+
+    return {
+        "input_amount":  _wei_to_eth(exact_in_wei),
+        "output_amount": _wei_to_eth(output_wei),
+    }
+
+
+def parse_simulated_swap_results(results: List[Dict[str, Any]], w3: Web3) -> Optional[Dict[str, Decimal]]:
     """Pretty-print and return {'input_amount', 'output_amount'} for each result."""
     result_dict: Optional[Dict[str, Decimal]] = None
     for idx, sim in enumerate(results):
