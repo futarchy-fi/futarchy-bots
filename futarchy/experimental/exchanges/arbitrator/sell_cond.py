@@ -308,23 +308,26 @@ def sell_gno_yes_and_no_amounts_to_sdai_single(
         steps += build_step_2_swap_steps(split_amount_in_wei, conditional_sdai_amount_wei)
  
 
-    # merge_tx = build_merge_tx(
-    #     w3,
-    #     client,
-    #     router_addr,
-    #     proposal_addr,
-    #     gno_collateral_addr,
-    #     int(gno_amount_in_wei) if gno_amount_in_wei else 0,
-    #     acct.address,
-    # )
-    # steps.append((merge_tx, handle_merge))
-    if liquidate_conditional_sdai_amount:
-        steps += build_conditional_sdai_liquidation_steps(
-            liquidate_conditional_sdai_amount,
-            handle_liquidate,
-            handle_buy_sdai_yes,
-            handle_merge_conditional_sdai,
-    )
+    if max_step >= 3:
+        conditional_sdai_amount_wei = w3.to_wei(Decimal(conditional_sdai_amount), "ether")
+        merge_tx = build_merge_tx(
+            w3,
+            client,
+            router_addr,
+            proposal_addr,
+            collateral_addr,
+            int(conditional_sdai_amount_wei),
+            acct.address,
+        )
+        steps.append((merge_tx, handle_merge))
+
+        if liquidate_conditional_sdai_amount:
+            steps += build_conditional_sdai_liquidation_steps(
+                liquidate_conditional_sdai_amount,
+                handle_liquidate,
+                handle_buy_sdai_yes,
+                handle_merge_conditional_sdai,
+        )
 
 
     bundle = [tx for tx, _ in steps]
