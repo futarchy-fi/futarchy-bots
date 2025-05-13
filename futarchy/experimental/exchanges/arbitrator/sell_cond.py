@@ -281,6 +281,7 @@ def sell_gno_yes_and_no_amounts_to_sdai_single(
     # ------------------------------------------------------------------ #
     sdai_amount_in_wei = w3.to_wei(Decimal(amount), "ether")
     conditional_sdai_amount_wei = w3.to_wei(Decimal(conditional_sdai_amount), "ether")
+
     buy_gno_tx = build_buy_gno_to_sdai_swap_tx(
         w3,
         client,
@@ -317,13 +318,13 @@ def sell_gno_yes_and_no_amounts_to_sdai_single(
     #     acct.address,
     # )
     # steps.append((merge_tx, handle_merge))
-    # if liquidate_conditional_sdai_amount:
-    #     steps += build_conditional_sdai_liquidation_steps(
-    #         liquidate_conditional_sdai_amount,
-    #         handle_liquidate,
-    #         handle_buy_sdai_yes,
-    #         handle_merge_conditional_sdai,
-    # )
+    if liquidate_conditional_sdai_amount:
+        steps += build_conditional_sdai_liquidation_steps(
+            liquidate_conditional_sdai_amount,
+            handle_liquidate,
+            handle_buy_sdai_yes,
+            handle_merge_conditional_sdai,
+    )
 
 
     bundle = [tx for tx, _ in steps]
@@ -488,7 +489,23 @@ if __name__ == "__main__":
     elif num_script_args == 3:
         # Corresponds to the "main_legacy" block's behavior with 3 arguments
         gno_amount = float(sys.argv[2])
-        liquidate_conditional_sdai_amount = float(sys.argv[3])
+        conditional_sdai_amount = float(sys.argv[3])
+        # print(f"Debug: Running legacy logic with amount: {amount}, gno_amount: {gno_amount}, liquidate: {conditional_sdai_amount}") # Optional debug print
+        print(
+            f"Simulating for amount: {amount} with GNO amount: {gno_amount}, liquidating sDAI: {conditional_sdai_amount}"
+        )
+        result = sell_gno_yes_and_no_amounts_to_sdai_single(
+            amount,
+            gno_amount,
+            conditional_sdai_amount,
+            broadcast=broadcast,
+        )
+        print(f"Result: {result}")
+    elif num_script_args == 4:
+        # Corresponds to the "main_legacy" block's behavior with 3 arguments
+        gno_amount = float(sys.argv[2])
+        conditional_sdai_amount = float(sys.argv[3])
+        liquidate_conditional_sdai_amount = float(sys.argv[4])
         # print(f"Debug: Running legacy logic with amount: {amount}, gno_amount: {gno_amount}, liquidate: {liquidate_conditional_sdai_amount}") # Optional debug print
         print(
             f"Simulating for amount: {amount} with GNO amount: {gno_amount}, liquidating sDAI: {liquidate_conditional_sdai_amount}"
@@ -496,6 +513,7 @@ if __name__ == "__main__":
         result = sell_gno_yes_and_no_amounts_to_sdai_single(
             amount,
             gno_amount,
+            conditional_sdai_amount,
             liquidate_conditional_sdai_amount,
             broadcast=broadcast,
         )
