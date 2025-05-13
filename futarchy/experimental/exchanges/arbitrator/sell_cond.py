@@ -332,45 +332,47 @@ def sell_gno_yes_and_no_amounts_to_sdai_single(
 
     bundle = [tx for tx, _ in steps]
 
-    # if broadcast:
-    #     tx_hashes = _send_bundle_onchain(bundle)
+    if broadcast:
+        tx_hashes = _send_bundle_onchain(bundle)
 
-    #     # Prepare initial state analogous to simulation path
-    #     sdai_in = Decimal(amount) + Decimal(max(-(liquidate_conditional_sdai_amount or 0), 0))
-    #     state = {
-    #         "amount_out_yes_wei": None,
-    #         "amount_out_no_wei": None,
-    #         "amount_in_yes_wei": None,
-    #         "amount_in_no_wei": None,
-    #         "sdai_out": Decimal("0"),
-    #         "sdai_in": sdai_in,
-    #     }
+        # Prepare initial state analogous to simulation path
+        sdai_in = Decimal(amount) + Decimal(max(-(liquidate_conditional_sdai_amount or 0), 0))
+        state = {
+            "amount_out_yes_wei": None,
+            "amount_out_no_wei": None,
+            "amount_in_yes_wei": None,
+            "amount_in_no_wei": None,
+            "sdai_out": Decimal("0"),
+            "sdai_in": sdai_in,
+        }
 
-    #     # Walk over tx hashes and matching handlers to enrich state
-    #     for (tx_hash, (_tx_dict, handler)) in zip(tx_hashes, steps):
-    #         # SwapR swaps expose metadata via attributes
-    #         if hasattr(handler, "label_kind"):
-    #             swap_res = parse_broadcasted_swapr_results(tx_hash, fixed=handler.fixed_kind)
-    #             if not swap_res:
-    #                 continue
-    #             inp_wei = w3.to_wei(swap_res["input_amount"], "ether")
-    #             out_wei = w3.to_wei(swap_res["output_amount"], "ether")
-    #             if handler.label_kind == "yes":
-    #                 state["amount_in_yes_wei"] = inp_wei
-    #                 state["amount_out_yes_wei"] = out_wei
-    #             else:
-    #                 state["amount_in_no_wei"] = inp_wei
-    #                 state["amount_out_no_wei"] = out_wei
+        # Walk over tx hashes and matching handlers to enrich state
+        for (tx_hash, (_tx_dict, handler)) in zip(tx_hashes, steps):
+            # SwapR swaps expose metadata via attributes
+            if hasattr(handler, "label_kind"):
+                swap_res = parse_broadcasted_swapr_results(tx_hash, fixed=handler.fixed_kind)
+                print("swap_res:", swap_res)
+                if not swap_res:
+                    continue
+                inp_wei = w3.to_wei(swap_res["input_amount"], "ether")
+                out_wei = w3.to_wei(swap_res["output_amount"], "ether")
+                if handler.label_kind == "yes":
+                    state["amount_in_yes_wei"] = inp_wei
+                    state["amount_out_yes_wei"] = out_wei
+                else:
+                    state["amount_in_no_wei"] = inp_wei
+                    state["amount_out_no_wei"] = out_wei
 
-    #         elif handler.__name__ == "handle_balancer":
-    #             bal_res = parse_broadcasted_balancer_results(tx_hash)
-    #             if bal_res:
-    #                 state["sdai_out"] += bal_res["output_amount"]
+            elif handler.__name__ == "handle_balancer":
+                bal_res = parse_broadcasted_balancer_results(tx_hash)
+                print("bal_res:", bal_res)
+                if bal_res:
+                    state["sdai_out"] += bal_res["output_amount"]
 
-    #         # Other handlers (split/merge, etc.) don't affect summary totals directly
+            # Other handlers (split/merge, etc.) don't affect summary totals directly
 
-    #     print("Broadcast tx hashes:", tx_hashes)
-    #     return {"tx_hashes": tx_hashes, **state}
+        print("Broadcast tx hashes:", tx_hashes)
+        return {"tx_hashes": tx_hashes, **state}
 
     result = client.simulate(bundle)
     sdai_in = Decimal(amount) + Decimal(max(-(liquidate_conditional_sdai_amount or 0), 0))
