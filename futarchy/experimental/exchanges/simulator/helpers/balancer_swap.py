@@ -1,11 +1,14 @@
-"""Helper for simulating Balancer BatchRouter.swapExactIn (sell GNO → sDAI) via Tenderly.
+"""Helper for simulating Balancer BatchRouter.swapExactIn (sell GNO → sDAI or buy GNO with sDAI) via Tenderly.
 
-Assumes the sender wallet already approved the required amount of GNO to the BatchRouter.
+Assumes the sender wallet already approved the required amount of GNO or sDAI to the BatchRouter.
 Only builds and simulates the swap transaction – **does not** broadcast it on-chain.
 
 The helper exposes two public functions:
 
     • build_sell_gno_to_sdai_swap_tx(w3, client, amount_in_wei, min_amount_out_wei, sender)
+        ↳ Returns a Tenderly-compatible transaction dict ready for simulation.
+
+    • build_buy_gno_to_sdai_swap_tx(w3, client, amount_in_wei, min_amount_out_wei, sender)
         ↳ Returns a Tenderly-compatible transaction dict ready for simulation.
 
     • sell_gno_to_sdai(w3, client, amount_in_wei, min_amount_out_wei, sender)
@@ -119,6 +122,7 @@ BALANCER_ROUTER_ABI: List[Dict[str, Any]] = [
 
 __all__ = [
     "build_sell_gno_to_sdai_swap_tx",
+    "build_buy_gno_to_sdai_swap_tx",
     "sell_gno_to_sdai",
     "parse_simulated_swap_results",
     "parse_broadcasted_swap_results",
@@ -191,6 +195,54 @@ def build_sell_gno_to_sdai_swap_tx(
         steps,
         int(amount_in_wei),
         int(min_amount_out_wei),
+    )
+
+    calldata = router.encodeABI(
+        fn_name="swapExactIn",
+        args=[[path], int(deadline), bool(weth_is_eth), user_data],
+    )
+
+    return client.build_tx(router.address, calldata, sender)
+
+
+def build_buy_gno_to_sdai_swap_tx(
+    w3: Web3,
+    client: TenderlyClient,
+    amount_in_wei: int,
+    min_amount_out_wei: int,
+    sender: str,
+    *,
+    router_addr: str | None = None,
+    deadline: int = MAX_DEADLINE,
+    weth_is_eth: bool = False,
+    user_data: bytes = b"",
+) -> Dict[str, Any]:
+    """Encode swapExactIn calldata for **buying GNO with sDAI**."""
+
+    router = _get_router(w3, router_addr)
+
+    # SwapPathStep[] – two hops (reverse order)
+    steps = [
+        # 1️⃣ sDAI → buffer token (direct pool swap)
+        (
+            FINAL_POOL,
+            BUFFER_POOL,
+            False,
+        ),
+        # 2️⃣ buffer token → GNO (buffer hop)
+        (
+            BUFFER_POOL,
+            GNO,
+            True,
+        ),
+    ]
+
+    # SwapPathExactAmountIn
+    path = (
+        SDAI,                     # tokenIn (sDAI)
+        steps,
+        int(amount_in_wei),       # exactAmountIn (sDAI)
+        int(min_amount_out_wei),  # minAmountOut  (GNO)
     )
 
     calldata = router.encodeABI(
@@ -284,7 +336,7 @@ def parse_broadcasted_swap_results(tx_hash: str) -> Optional[Dict[str, Decimal]]
         if len(log.topics) < 3:
             continue
         to_addr = "0x" + log.topics[2].hex()[26:]
-        if to_addr.lower() == sender.lower() and log.address.lower() == SDAI.lower():
+        if to_addr.lower() == sender.lower() and log.address.lower() in (SDAI.lower(), GNO.lower()):
             transferred = int(log.data.hex(), 16) if hasattr(log.data, "hex") else int(log.data, 16)
             output_wei += transferred
 
@@ -389,9 +441,13 @@ def main():  # pragma: no cover
 
     load_dotenv()
 
-    parser = argparse.ArgumentParser(description="Simulate GNO → sDAI swap via Tenderly")
-    parser.add_argument("--amount_in", type=float, default=0.1, help="GNO amount to sell (ether equivalent)")
-    parser.add_argument("--min_out", type=float, default=1.0, help="Minimum acceptable sDAI (ether equivalent)")
+    parser = argparse.ArgumentParser(description="Simulate Balancer swap via Tenderly")
+    parser.add_argument("--amount_in", type=float, default=0.1,
+                        help="Token amount to swap (ether units)")
+    parser.add_argument("--min_out", type=float, default=1.0,
+                        help="Minimum acceptable amount out (ether units)")
+    parser.add_argument("--sell_gno", type=str, choices=["true", "false"], default="true",
+                        help="true (default) → sell GNO for sDAI; false → buy GNO with sDAI")
     args = parser.parse_args()
 
     sender = os.getenv("WALLET_ADDRESS") or os.getenv("SENDER_ADDRESS")
@@ -406,7 +462,17 @@ def main():  # pragma: no cover
     amount_in_wei = w3.to_wei(Decimal(str(args.amount_in)), "ether")
     min_out_wei = w3.to_wei(Decimal(str(args.min_out)), "ether")
 
-    result = sell_gno_to_sdai(w3, client, amount_in_wei, min_out_wei, sender)
+    if args.sell_gno.lower() == "true":
+        result = sell_gno_to_sdai(w3, client, amount_in_wei, min_out_wei, sender)
+    else:
+        tx = build_buy_gno_to_sdai_swap_tx(
+            w3, client, amount_in_wei, min_out_wei, sender
+        )
+        result = client.simulate([tx])
+        if result and result.get("simulation_results"):
+            parse_simulated_swap_results(result["simulation_results"], w3)
+        else:
+            logger.debug("Simulation failed or returned no results.")
 
     tx = result["simulation_results"][0]["transaction"]
     if tx.get("status") is False:
