@@ -264,7 +264,7 @@ def extract_return(sim, amount_in_or_out_wei_local, fixed_kind):
         return returned_amount_wei
     return None
 
-def get_gno_yes_and_no_amounts_from_sdai_single(
+def sell_gno_yes_and_no_amounts_to_sdai_single(
     amount,
     gno_amount=None,
     liquidate_conditional_sdai_amount=None,
@@ -401,10 +401,10 @@ def get_gno_yes_and_no_amounts_from_sdai_single(
         print("Simulation failed or returned no results.")
     return state
 
-def get_gno_yes_and_no_amounts_from_sdai(amount, *, broadcast=False):
+def sell_gno_yes_and_no_amounts_to_sdai(amount, *, broadcast=False):
     """Calculates the best split based on multiple simulations"""
     # First simulation: No GNO swap limit
-    result = get_gno_yes_and_no_amounts_from_sdai_single(
+    result = sell_gno_yes_and_no_amounts_to_sdai_single(
         amount, None, None
     )
 
@@ -420,8 +420,8 @@ def get_gno_yes_and_no_amounts_from_sdai(amount, *, broadcast=False):
 
     amount_out_limited = w3.from_wei(amount_out_limited_wei, "ether")  # gno_amount in ETH
 
-    print("Running:\nget_gno_yes_and_no_amounts_from_sdai_single({}, {}, None)\n".format(amount, amount_out_limited))
-    result = get_gno_yes_and_no_amounts_from_sdai_single(
+    print("Running:\nsell_gno_yes_and_no_amounts_to_sdai_single({}, {}, None)\n".format(amount, amount_out_limited))
+    result = sell_gno_yes_and_no_amounts_to_sdai_single(
         amount, amount_out_limited, None
     )
 
@@ -433,8 +433,8 @@ def get_gno_yes_and_no_amounts_from_sdai(amount, *, broadcast=False):
     liquidate_conditional_sdai_amount_wei = amount_in_no_wei - amount_in_yes_wei
     liquidate_conditional_sdai_amount = w3.from_wei(liquidate_conditional_sdai_amount_wei, "ether")
 
-    print("Running:\nget_gno_yes_and_no_amounts_from_sdai_single({}, {}, {})\n".format(amount, amount_out_limited, liquidate_conditional_sdai_amount))
-    result = get_gno_yes_and_no_amounts_from_sdai_single(
+    print("Running:\nsell_gno_yes_and_no_amounts_to_sdai_single({}, {}, {})\n".format(amount, amount_out_limited, liquidate_conditional_sdai_amount))
+    result = sell_gno_yes_and_no_amounts_to_sdai_single(
         amount,
         amount_out_limited,
         liquidate_conditional_sdai_amount,
@@ -474,14 +474,14 @@ if __name__ == "__main__":
         # Corresponds to the original "main" block's behavior (1 argument)
         # print(f"Debug: Running current main logic with amount: {amount}") # Optional debug print
         print(f"Simulating for amount: {amount}")
-        result = get_gno_yes_and_no_amounts_from_sdai(amount, broadcast=broadcast)
+        result = sell_gno_yes_and_no_amounts_to_sdai(amount, broadcast=broadcast)
         print(f"Result: {result}")
     elif num_script_args == 2:
         # Corresponds to the "main_legacy" block's behavior with 2 arguments
         gno_amount = float(sys.argv[2])
         # print(f"Debug: Running legacy logic with amount: {amount}, gno_amount: {gno_amount}") # Optional debug print
         print(f"Simulating for amount: {amount} with GNO amount: {gno_amount}")
-        result = get_gno_yes_and_no_amounts_from_sdai_single(
+        result = sell_gno_yes_and_no_amounts_to_sdai_single(
             amount, gno_amount, None, broadcast=broadcast
         )
         print(f"Result: {result}")
@@ -493,7 +493,7 @@ if __name__ == "__main__":
         print(
             f"Simulating for amount: {amount} with GNO amount: {gno_amount}, liquidating sDAI: {liquidate_conditional_sdai_amount}"
         )
-        result = get_gno_yes_and_no_amounts_from_sdai_single(
+        result = sell_gno_yes_and_no_amounts_to_sdai_single(
             amount,
             gno_amount,
             liquidate_conditional_sdai_amount,
