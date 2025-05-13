@@ -21,10 +21,10 @@ from .helpers.blockchain_sender import send_tenderly_tx_onchain
 
 acct = Account.from_key(os.environ["PRIVATE_KEY"])
 
-token_yes_in = w3.to_checksum_address(os.environ["SWAPR_SDAI_YES_ADDRESS"])
-token_yes_out = w3.to_checksum_address(os.environ["SWAPR_GNO_YES_ADDRESS"])
-token_no_in = w3.to_checksum_address(os.environ["SWAPR_SDAI_NO_ADDRESS"])
-token_no_out = w3.to_checksum_address(os.environ["SWAPR_GNO_NO_ADDRESS"])
+token_yes_in = w3.to_checksum_address(os.environ["SWAPR_GNO_YES_ADDRESS"])
+token_yes_out = w3.to_checksum_address(os.environ["SWAPR_SDAI_YES_ADDRESS"])
+token_no_in = w3.to_checksum_address(os.environ["SWAPR_GNO_NO_ADDRESS"])
+token_no_out = w3.to_checksum_address(os.environ["SWAPR_SDAI_NO_ADDRESS"])
 
 # --- Futarchy splitPosition parameters ---------------------------------------
 router_addr = w3.to_checksum_address(os.environ["FUTARCHY_ROUTER_ADDRESS"])
@@ -73,8 +73,8 @@ def build_conditional_sdai_liquidation_steps(
             ]
     return steps
 
-def build_step_1_swap_steps(split_amount_in_wei, gno_amount_in_wei, price=1000):
-    if gno_amount_in_wei is None:
+def build_step_2_swap_steps(split_amount_in_wei, sdai_amount_in_wei, price=1000):
+    if sdai_amount_in_wei is None:
         deadline = int(time.time()) + 600
         amount_in_max = int(split_amount_in_wei * 1.2)
         amount_out_min = 0
@@ -92,8 +92,8 @@ def build_step_1_swap_steps(split_amount_in_wei, gno_amount_in_wei, price=1000):
         ]
     else:
         deadline = int(time.time()) + 600
-        amount_in_max = int(split_amount_in_wei * 1.2)
-        amount_out_expected = gno_amount_in_wei
+        amount_in_max = int(split_amount_in_wei * 1.01)
+        amount_out_expected = sdai_amount_in_wei
         amount_out_min = int(amount_out_expected * 0.9)
         sqrt_price_limit = 0
 
@@ -268,17 +268,13 @@ def extract_return(sim, amount_in_or_out_wei_local, fixed_kind):
 def sell_gno_yes_and_no_amounts_to_sdai_single(
     amount,
     gno_amount=None,
+    conditional_sdai_amount=None,
     liquidate_conditional_sdai_amount=None,
     *,
     broadcast=False,
     price=100,
 ):
-    split_amount_in_wei = w3.to_wei(Decimal(amount), "ether")
-    if gno_amount is not None:
-        gno_amount_in_wei = w3.to_wei(Decimal(gno_amount), "ether")
-    else:
-        gno_amount_in_wei = None
-
+    max_step = (3 if liquidate_conditional_sdai_amount else 2) if gno_amount is not None else 1
     steps = []
 
 
@@ -295,16 +291,21 @@ def sell_gno_yes_and_no_amounts_to_sdai_single(
     )
     steps.append((buy_gno_tx, lambda s, _sim: s)) 
 
-    split_tx = build_split_tx(
-        w3,
-        client,
-        router_addr,
-        proposal_addr,
-        gno_collateral_addr,
-        split_amount_in_wei,
-        acct.address,
-    )
-    steps.append((split_tx, handle_split))
+    if max_step >= 2:
+        split_amount_in_wei = w3.to_wei(Decimal(gno_amount), "ether")
+        
+        split_tx = build_split_tx(
+            w3,
+            client,
+            router_addr,
+            proposal_addr,
+            gno_collateral_addr,
+            split_amount_in_wei,
+            acct.address,
+        )
+        steps.append((split_tx, handle_split))
+
+        steps += build_step_2_swap_steps(split_amount_in_wei, conditional_sdai_amount)
  
 
     # merge_tx = build_merge_tx(
@@ -325,20 +326,6 @@ def sell_gno_yes_and_no_amounts_to_sdai_single(
     #         handle_merge_conditional_sdai,
     # )
 
-    # gno_to_sdai_txs = []
-    # if gno_amount_in_wei:
-    #     print("Sell GNO to sDAI, gno_amount_in_wei:", gno_amount_in_wei)
-    #     gno_to_sdai_txs.append(
-    #         build_sell_gno_to_sdai_swap_tx(
-    #             w3,
-    #             client,
-    #             gno_amount_in_wei,
-    #             1,
-    #             acct.address,
-    #         )
-    #     )
-    # if gno_to_sdai_txs:
-    #     steps.append((gno_to_sdai_txs[0], handle_balancer))
 
     bundle = [tx for tx, _ in steps]
 
