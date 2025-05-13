@@ -75,10 +75,8 @@ def build_conditional_sdai_liquidation_steps(
 
 def build_step_2_swap_steps(split_amount_in_wei, sdai_amount_in_wei, price=1000):
     if sdai_amount_in_wei is None:
-        deadline = int(time.time()) + 600
         amount_in_max = int(split_amount_in_wei * 1.2)
         amount_out_min = 0
-        sqrt_price_limit = 0
 
         yes_tx = build_exact_in_tx(
             token_yes_in, token_yes_out, split_amount_in_wei, amount_out_min, acct.address
@@ -91,11 +89,11 @@ def build_step_2_swap_steps(split_amount_in_wei, sdai_amount_in_wei, price=1000)
             (no_tx, handle_swap("no", "in", split_amount_in_wei)),
         ]
     else:
-        deadline = int(time.time()) + 600
         amount_in_max = int(split_amount_in_wei * 1.01)
         amount_out_expected = sdai_amount_in_wei
-        amount_out_min = int(amount_out_expected * 0.9)
-        sqrt_price_limit = 0
+        print("split_amount_in_wei: ", split_amount_in_wei)
+        print("amount_in_max: ", amount_in_max)
+        print("amount_out_expected: ", amount_out_expected)
 
         yes_tx = build_exact_out_tx(
             token_yes_in, token_yes_out, amount_out_expected, amount_in_max, acct.address
@@ -282,6 +280,7 @@ def sell_gno_yes_and_no_amounts_to_sdai_single(
     # Buy GNO with the provided sDAI amount via Balancer (exact-in)      #
     # ------------------------------------------------------------------ #
     sdai_amount_in_wei = w3.to_wei(Decimal(amount), "ether")
+    conditional_sdai_amount_wei = w3.to_wei(Decimal(conditional_sdai_amount), "ether")
     buy_gno_tx = build_buy_gno_to_sdai_swap_tx(
         w3,
         client,
@@ -305,7 +304,7 @@ def sell_gno_yes_and_no_amounts_to_sdai_single(
         )
         steps.append((split_tx, handle_split))
 
-        steps += build_step_2_swap_steps(split_amount_in_wei, conditional_sdai_amount)
+        steps += build_step_2_swap_steps(split_amount_in_wei, conditional_sdai_amount_wei)
  
 
     # merge_tx = build_merge_tx(
