@@ -6,11 +6,16 @@ from .helpers.swapr_swap import (
     client,
     build_exact_in_tx,
     build_exact_out_tx,
-    parse_swap_results as parse_swapr_results,
+    parse_simulated_swap_results as parse_simulated_swapr_results,
+    parse_broadcasted_swap_results as parse_broadcasted_swapr_results,
 )
 from .helpers.split_position import build_split_tx
 from .helpers.merge_position import build_merge_tx
-from .helpers.balancer_swap import build_sell_gno_to_sdai_swap_tx, parse_swap_results
+from .helpers.balancer_swap import (
+    build_sell_gno_to_sdai_swap_tx,
+    parse_simulated_swap_results as parse_simulated_balancer_results,
+    parse_broadcasted_swap_results as parse_broadcasted_balancer_results,
+)
 from .helpers.blockchain_sender import send_tenderly_tx_onchain
 
 acct = Account.from_key(os.environ["PRIVATE_KEY"])
@@ -173,14 +178,14 @@ def handle_split(state, sim):
     return state
 
 def handle_yes_swap(state, sim):
-    data = parse_swapr_results([sim], label="SwapR YES (exact-out)", fixed="out")
+    data = parse_simulated_swapr_results([sim], label="SwapR YES (exact-out)", fixed="out")
     returned_amount_wei = extract_return(sim, None, "out")
     if returned_amount_wei is not None:
         state["amount_out_yes_wei"] = returned_amount_wei
     return state
 
 def handle_no_swap(state, sim):
-    data = parse_swapr_results([sim], label="SwapR NO  (exact-out)", fixed="out")
+    data = parse_simulated_swapr_results([sim], label="SwapR NO  (exact-out)", fixed="out")
     returned_amount_wei = extract_return(sim, None, "out")
     if returned_amount_wei is not None:
         state["amount_out_no_wei"] = returned_amount_wei
@@ -190,20 +195,20 @@ def handle_merge(state, sim):
     return state
 
 def handle_liquidate(state, sim):
-    data = parse_swapr_results([sim], label="SwapR Liquidate YES→sDAI (exact-in)", fixed="in")
+    data = parse_simulated_swapr_results([sim], label="SwapR Liquidate YES→sDAI (exact-in)", fixed="in")
     if data:
         state["sdai_out"] += data["output_amount"]
     return state
 
 def handle_buy_sdai_yes(state, sim):
-    data = parse_swapr_results([sim], label="SwapR buy sDAI-YES (exact-out)", fixed="out")
+    data = parse_simulated_swapr_results([sim], label="SwapR buy sDAI-YES (exact-out)", fixed="out")
     return state
 
 def handle_merge_conditional_sdai(state, sim):
     return state
 
 def handle_balancer(state, sim):
-    data = parse_swap_results([sim], w3)
+    data = parse_simulated_balancer_results([sim], w3)
     if data:
         state["sdai_out"] += data["output_amount"]
     return state
@@ -222,7 +227,7 @@ def handle_swap(label_kind: str, fixed_kind: str, amount_wei: int):
     def _handler(state, sim):
         label = f"SwapR {label_kind.upper()} (exact-{fixed_kind_lc})"
         # Re-use existing pretty-printer util
-        parse_swapr_results([sim], label=label, fixed=fixed_kind_lc)
+        parse_simulated_swapr_results([sim], label=label, fixed=fixed_kind_lc)
 
         returned_amount_wei = extract_return(sim, amount_wei, fixed_kind_lc)
         if fixed_kind_lc == "in" and returned_amount_wei is not None:
@@ -241,6 +246,10 @@ def handle_swap(label_kind: str, fixed_kind: str, amount_wei: int):
                 state["amount_out_no_wei"] = amount_wei
         return state
 
+    # expose metadata for broadcast path
+    _handler.label_kind = label_kind_lc
+    _handler.fixed_kind = fixed_kind_lc
+    _handler.amount_wei = amount_wei
     return _handler
 
 def extract_return(sim, amount_in_or_out_wei_local, fixed_kind):
@@ -322,8 +331,43 @@ def get_gno_yes_and_no_amounts_from_sdai_single(
 
     if broadcast:
         tx_hashes = _send_bundle_onchain(bundle)
+
+        # Prepare initial state analogous to simulation path
+        sdai_in = Decimal(amount) + Decimal(max(-(liquidate_conditional_sdai_amount or 0), 0))
+        state = {
+            "amount_out_yes_wei": None,
+            "amount_out_no_wei": None,
+            "amount_in_yes_wei": None,
+            "amount_in_no_wei": None,
+            "sdai_out": Decimal("0"),
+            "sdai_in": sdai_in,
+        }
+
+        # Walk over tx hashes and matching handlers to enrich state
+        for (tx_hash, (_tx_dict, handler)) in zip(tx_hashes, steps):
+            # SwapR swaps expose metadata via attributes
+            if hasattr(handler, "label_kind"):
+                swap_res = parse_broadcasted_swapr_results(tx_hash, fixed=handler.fixed_kind)
+                if not swap_res:
+                    continue
+                inp_wei = w3.to_wei(swap_res["input_amount"], "ether")
+                out_wei = w3.to_wei(swap_res["output_amount"], "ether")
+                if handler.label_kind == "yes":
+                    state["amount_in_yes_wei"] = inp_wei
+                    state["amount_out_yes_wei"] = out_wei
+                else:
+                    state["amount_in_no_wei"] = inp_wei
+                    state["amount_out_no_wei"] = out_wei
+
+            elif handler.__name__ == "handle_balancer":
+                bal_res = parse_broadcasted_balancer_results(tx_hash)
+                if bal_res:
+                    state["sdai_out"] += bal_res["output_amount"]
+
+            # Other handlers (split/merge, etc.) don't affect summary totals directly
+
         print("Broadcast tx hashes:", tx_hashes)
-        return {"tx_hashes": tx_hashes}
+        return {"tx_hashes": tx_hashes, **state}
 
     result = client.simulate(bundle)
     sdai_in = Decimal(amount) + Decimal(max(-(liquidate_conditional_sdai_amount or 0), 0))
