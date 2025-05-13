@@ -13,6 +13,7 @@ from .helpers.split_position import build_split_tx
 from .helpers.merge_position import build_merge_tx
 from .helpers.balancer_swap import (
     build_sell_gno_to_sdai_swap_tx,
+    build_buy_gno_to_sdai_swap_tx,
     parse_simulated_swap_results as parse_simulated_balancer_results,
     parse_broadcasted_swap_results as parse_broadcasted_balancer_results,
 )
@@ -278,96 +279,108 @@ def sell_gno_yes_and_no_amounts_to_sdai_single(
     else:
         gno_amount_in_wei = None
 
+    steps = []
+
+
+    # ------------------------------------------------------------------ #
+    # Buy GNO with the provided sDAI amount via Balancer (exact-in)      #
+    # ------------------------------------------------------------------ #
+    sdai_amount_in_wei = w3.to_wei(Decimal(amount), "ether")
+    buy_gno_tx = build_buy_gno_to_sdai_swap_tx(
+        w3,
+        client,
+        sdai_amount_in_wei,
+        1,            # min GNO out (wei)
+        acct.address,
+    )
+    steps.append((buy_gno_tx, lambda s, _sim: s)) 
+
     split_tx = build_split_tx(
         w3,
         client,
         router_addr,
         proposal_addr,
-        collateral_addr,
+        gno_collateral_addr,
         split_amount_in_wei,
         acct.address,
     )
-
-    steps = []
     steps.append((split_tx, handle_split))
+ 
 
-    swap_steps = build_step_1_swap_steps(split_amount_in_wei, gno_amount_in_wei, price)
-    steps.extend(swap_steps)
+    # merge_tx = build_merge_tx(
+    #     w3,
+    #     client,
+    #     router_addr,
+    #     proposal_addr,
+    #     gno_collateral_addr,
+    #     int(gno_amount_in_wei) if gno_amount_in_wei else 0,
+    #     acct.address,
+    # )
+    # steps.append((merge_tx, handle_merge))
+    # if liquidate_conditional_sdai_amount:
+    #     steps += build_conditional_sdai_liquidation_steps(
+    #         liquidate_conditional_sdai_amount,
+    #         handle_liquidate,
+    #         handle_buy_sdai_yes,
+    #         handle_merge_conditional_sdai,
+    # )
 
-    merge_tx = build_merge_tx(
-        w3,
-        client,
-        router_addr,
-        proposal_addr,
-        gno_collateral_addr,
-        int(gno_amount_in_wei) if gno_amount_in_wei else 0,
-        acct.address,
-    )
-    steps.append((merge_tx, handle_merge))
-    if liquidate_conditional_sdai_amount:
-        steps += build_conditional_sdai_liquidation_steps(
-            liquidate_conditional_sdai_amount,
-            handle_liquidate,
-            handle_buy_sdai_yes,
-            handle_merge_conditional_sdai,
-    )
-
-    gno_to_sdai_txs = []
-    if gno_amount_in_wei:
-        print("Sell GNO to sDAI, gno_amount_in_wei:", gno_amount_in_wei)
-        gno_to_sdai_txs.append(
-            build_sell_gno_to_sdai_swap_tx(
-                w3,
-                client,
-                gno_amount_in_wei,
-                1,
-                acct.address,
-            )
-        )
-    if gno_to_sdai_txs:
-        steps.append((gno_to_sdai_txs[0], handle_balancer))
+    # gno_to_sdai_txs = []
+    # if gno_amount_in_wei:
+    #     print("Sell GNO to sDAI, gno_amount_in_wei:", gno_amount_in_wei)
+    #     gno_to_sdai_txs.append(
+    #         build_sell_gno_to_sdai_swap_tx(
+    #             w3,
+    #             client,
+    #             gno_amount_in_wei,
+    #             1,
+    #             acct.address,
+    #         )
+    #     )
+    # if gno_to_sdai_txs:
+    #     steps.append((gno_to_sdai_txs[0], handle_balancer))
 
     bundle = [tx for tx, _ in steps]
 
-    if broadcast:
-        tx_hashes = _send_bundle_onchain(bundle)
+    # if broadcast:
+    #     tx_hashes = _send_bundle_onchain(bundle)
 
-        # Prepare initial state analogous to simulation path
-        sdai_in = Decimal(amount) + Decimal(max(-(liquidate_conditional_sdai_amount or 0), 0))
-        state = {
-            "amount_out_yes_wei": None,
-            "amount_out_no_wei": None,
-            "amount_in_yes_wei": None,
-            "amount_in_no_wei": None,
-            "sdai_out": Decimal("0"),
-            "sdai_in": sdai_in,
-        }
+    #     # Prepare initial state analogous to simulation path
+    #     sdai_in = Decimal(amount) + Decimal(max(-(liquidate_conditional_sdai_amount or 0), 0))
+    #     state = {
+    #         "amount_out_yes_wei": None,
+    #         "amount_out_no_wei": None,
+    #         "amount_in_yes_wei": None,
+    #         "amount_in_no_wei": None,
+    #         "sdai_out": Decimal("0"),
+    #         "sdai_in": sdai_in,
+    #     }
 
-        # Walk over tx hashes and matching handlers to enrich state
-        for (tx_hash, (_tx_dict, handler)) in zip(tx_hashes, steps):
-            # SwapR swaps expose metadata via attributes
-            if hasattr(handler, "label_kind"):
-                swap_res = parse_broadcasted_swapr_results(tx_hash, fixed=handler.fixed_kind)
-                if not swap_res:
-                    continue
-                inp_wei = w3.to_wei(swap_res["input_amount"], "ether")
-                out_wei = w3.to_wei(swap_res["output_amount"], "ether")
-                if handler.label_kind == "yes":
-                    state["amount_in_yes_wei"] = inp_wei
-                    state["amount_out_yes_wei"] = out_wei
-                else:
-                    state["amount_in_no_wei"] = inp_wei
-                    state["amount_out_no_wei"] = out_wei
+    #     # Walk over tx hashes and matching handlers to enrich state
+    #     for (tx_hash, (_tx_dict, handler)) in zip(tx_hashes, steps):
+    #         # SwapR swaps expose metadata via attributes
+    #         if hasattr(handler, "label_kind"):
+    #             swap_res = parse_broadcasted_swapr_results(tx_hash, fixed=handler.fixed_kind)
+    #             if not swap_res:
+    #                 continue
+    #             inp_wei = w3.to_wei(swap_res["input_amount"], "ether")
+    #             out_wei = w3.to_wei(swap_res["output_amount"], "ether")
+    #             if handler.label_kind == "yes":
+    #                 state["amount_in_yes_wei"] = inp_wei
+    #                 state["amount_out_yes_wei"] = out_wei
+    #             else:
+    #                 state["amount_in_no_wei"] = inp_wei
+    #                 state["amount_out_no_wei"] = out_wei
 
-            elif handler.__name__ == "handle_balancer":
-                bal_res = parse_broadcasted_balancer_results(tx_hash)
-                if bal_res:
-                    state["sdai_out"] += bal_res["output_amount"]
+    #         elif handler.__name__ == "handle_balancer":
+    #             bal_res = parse_broadcasted_balancer_results(tx_hash)
+    #             if bal_res:
+    #                 state["sdai_out"] += bal_res["output_amount"]
 
-            # Other handlers (split/merge, etc.) don't affect summary totals directly
+    #         # Other handlers (split/merge, etc.) don't affect summary totals directly
 
-        print("Broadcast tx hashes:", tx_hashes)
-        return {"tx_hashes": tx_hashes, **state}
+    #     print("Broadcast tx hashes:", tx_hashes)
+    #     return {"tx_hashes": tx_hashes, **state}
 
     result = client.simulate(bundle)
     sdai_in = Decimal(amount) + Decimal(max(-(liquidate_conditional_sdai_amount or 0), 0))
@@ -474,7 +487,8 @@ if __name__ == "__main__":
         # Corresponds to the original "main" block's behavior (1 argument)
         # print(f"Debug: Running current main logic with amount: {amount}") # Optional debug print
         print(f"Simulating for amount: {amount}")
-        result = sell_gno_yes_and_no_amounts_to_sdai(amount, broadcast=broadcast)
+        # result = sell_gno_yes_and_no_amounts_to_sdai(amount, broadcast=broadcast)
+        result = sell_gno_yes_and_no_amounts_to_sdai_single(amount, broadcast=broadcast)
         print(f"Result: {result}")
     elif num_script_args == 2:
         # Corresponds to the "main_legacy" block's behavior with 2 arguments
