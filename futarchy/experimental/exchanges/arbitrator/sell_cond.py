@@ -75,7 +75,7 @@ def build_conditional_sdai_liquidation_steps(
 
 def build_step_2_swap_steps(split_amount_in_wei, sdai_amount_in_wei, price=1000):
     if sdai_amount_in_wei is None:
-        amount_in_max = int(split_amount_in_wei * 1.2)
+        amount_in_max = int(split_amount_in_wei * 100.2)
         amount_out_min = 0
 
         yes_tx = build_exact_in_tx(
@@ -89,7 +89,7 @@ def build_step_2_swap_steps(split_amount_in_wei, sdai_amount_in_wei, price=1000)
             (no_tx, handle_swap("no", "in", split_amount_in_wei)),
         ]
     else:
-        amount_in_max = int(split_amount_in_wei * 1.01)
+        amount_in_max = int(split_amount_in_wei * 100.01)
         amount_out_expected = sdai_amount_in_wei
         print("split_amount_in_wei: ", split_amount_in_wei)
         print("amount_in_max: ", amount_in_max)
