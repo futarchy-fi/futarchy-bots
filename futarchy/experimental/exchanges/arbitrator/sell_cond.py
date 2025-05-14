@@ -272,7 +272,7 @@ def sell_gno_yes_and_no_amounts_to_sdai_single(
     broadcast=False,
     price=100,
 ):
-    max_step = (3 if liquidate_conditional_sdai_amount else 2) if gno_amount is not None else 1
+    max_step = (3 if liquidate_conditional_sdai_amount else 2) if gno_amount is not None and conditional_sdai_amount is not None else 1
     steps = []
 
 
@@ -280,7 +280,6 @@ def sell_gno_yes_and_no_amounts_to_sdai_single(
     # Buy GNO with the provided sDAI amount via Balancer (exact-in)      #
     # ------------------------------------------------------------------ #
     sdai_amount_in_wei = w3.to_wei(Decimal(amount), "ether")
-    conditional_sdai_amount_wei = w3.to_wei(Decimal(conditional_sdai_amount), "ether")
 
     buy_gno_tx = build_buy_gno_to_sdai_swap_tx(
         w3,
@@ -292,6 +291,7 @@ def sell_gno_yes_and_no_amounts_to_sdai_single(
     steps.append((buy_gno_tx, lambda s, _sim: s)) 
 
     if max_step >= 2:
+        conditional_sdai_amount_wei = w3.to_wei(Decimal(conditional_sdai_amount), "ether")
         split_amount_in_wei = w3.to_wei(Decimal(gno_amount), "ether")
         
         split_tx = build_split_tx(

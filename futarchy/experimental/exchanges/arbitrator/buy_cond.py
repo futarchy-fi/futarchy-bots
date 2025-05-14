@@ -75,7 +75,7 @@ def build_conditional_sdai_liquidation_steps(
 def build_step_1_swap_steps(split_amount_in_wei, gno_amount_in_wei, price=1000):
     if gno_amount_in_wei is None:
         deadline = int(time.time()) + 600
-        amount_in_max = int(split_amount_in_wei * 1.2)
+        amount_in_max = int(split_amount_in_wei * 10.2)
         amount_out_min = 0
         sqrt_price_limit = 0
 
@@ -91,7 +91,7 @@ def build_step_1_swap_steps(split_amount_in_wei, gno_amount_in_wei, price=1000):
         ]
     else:
         deadline = int(time.time()) + 600
-        amount_in_max = int(split_amount_in_wei * 1.2)
+        amount_in_max = int(split_amount_in_wei * 10.2)
         amount_out_expected = gno_amount_in_wei
         amount_out_min = int(amount_out_expected * 0.9)
         sqrt_price_limit = 0
