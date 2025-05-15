@@ -357,6 +357,7 @@ def sell_gno_yes_and_no_amounts_to_sdai_single(
             "amount_out_no_wei": None,
             "amount_in_yes_wei": None,
             "amount_in_no_wei": None,
+            "gno_out": Decimal("0"),
             "sdai_out": Decimal("0"),
             "sdai_in": sdai_in,
         }

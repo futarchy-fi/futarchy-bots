@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import os
 import logging
+import time
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
@@ -306,6 +307,7 @@ def parse_broadcasted_swap_results(tx_hash: str) -> Optional[Dict[str, Decimal]]
     if not tx or tx.to.lower() != router.address.lower():
         return None
 
+    time.sleep(5)
     receipt = w3.eth.get_transaction_receipt(tx_hash)
     if receipt.status != 1:  # reverted / failed
         return None
