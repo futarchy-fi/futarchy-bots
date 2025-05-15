@@ -430,7 +430,7 @@ def buy_gno_yes_and_no_amounts_with_sdai(amount, *, broadcast=False):
     amount_in_no_wei = result['amount_in_no_wei']
 
     print("STEP 3 ----------------")
-    liquidate_conditional_sdai_amount_wei = amount_in_no_wei - amount_in_yes_wei
+    liquidate_conditional_sdai_amount_wei = amount_in_yes_wei - amount_in_no_wei
     print("liquidate_conditional_sdai_amount_wei: ", liquidate_conditional_sdai_amount_wei)
     
     if liquidate_conditional_sdai_amount_wei > 0:
