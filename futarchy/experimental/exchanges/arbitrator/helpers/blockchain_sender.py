@@ -60,11 +60,13 @@ def send_tenderly_tx_onchain(tenderly_tx: dict, value: int = 0, nonce: Optional[
             }
         )
     except Exception as err:  # fallback on ANY estimation failure
-        print("estimate_gas failed, using 700_000 fallback ->", err)
-        tx["gas"] = 700_000
+        print("estimate_gas failed, using 1_500_000 fallback ->", err)
+        tx["gas"] = 1_500_000
 
     signed_tx = acct.sign_transaction(tx)
-    return w3.eth.send_raw_transaction(signed_tx.rawTransaction).hex()
+    hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction).hex()
+    w3.eth.wait_for_transaction_receipt(hash)
+    return hash
 
 
 # --------------------------------------------------------------------------- #
