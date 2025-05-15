@@ -2,15 +2,15 @@ import os
 import json
 from web3 import Web3, HTTPProvider
 from eth_account import Account
-from eth_account.messages import encode_typed_data
+from eth_account.messages import encode_structured_data
 from pathlib import Path
 
 # --- Configuration ---
 # Load environment variables
 PRIVATE_KEY = os.getenv("PRIVATE_KEY")
 USER_ADDRESS = os.getenv("USER_ADDRESS")
-GNOSIS_RPC_URL = os.getenv("GNOSIS_RPC_URL")
-BATCH_ROUTER_ADDRESS = os.getenv("BATCH_ROUTER_ADDRESS")
+GNOSIS_RPC_URL = os.getenv("RPC_URL")
+BATCH_ROUTER_ADDRESS = os.getenv("BALANCER_ROUTER_ADDRESS")
 if not BATCH_ROUTER_ADDRESS:
     # Default Balancer Vault address on Gnosis Chain
     BATCH_ROUTER_ADDRESS = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
@@ -18,13 +18,21 @@ PERMIT2_ADDRESS = "0x000000000022d473030f116ddee9f6b43ac78ba3"
 CHAIN_ID = 100
 
 def load_abi():
-    """Load the Balancer Router ABI from a JSON file."""
-    reference_path = Path(__file__).parent / ".reference" / "balancer_router.abi.json"
-    if reference_path.exists():
-        with open(reference_path, 'r') as f:
-            return json.load(f)
-    else:
-        raise FileNotFoundError(f"ABI file not found at {reference_path}")
+    """Load the Balancer Router ABI from a JSON file.
+    
+    Looks first in a `.reference` directory adjacent to this script, then
+    falls back to a project-root `.reference` directory.
+    """
+    local_path = Path(__file__).parent / ".reference" / "balancer_router.abi.json"
+    root_path = Path(__file__).resolve().parent.parent.parent / ".reference" / "balancer_router.abi.json"
+
+    for candidate in (local_path, root_path):
+        if candidate.exists():
+            with open(candidate, "r") as f:
+                return json.load(f)
+
+    raise FileNotFoundError(
+        "ABI file not found. Checked: " f"{local_path} and {root_path}")
 
 def connect_to_chain():
     """Establish connection to the Gnosis Chain RPC endpoint."""
@@ -97,10 +105,13 @@ def prepare_permit_data():
     
     return typed_data, user_address, batch_router_address, token_address, vault_address
 
+from eth_account.messages import encode_structured_data as _encode_eip712
+
+# --- Signing ---
 def sign_permit_message(w3, typed_data):
     """Sign the Permit2 message using the EIP-712 structured data format."""
     print("\n--- Signing Permit2 Message ---")
-    encoded_message = encode_typed_data(full_message=typed_data)
+    encoded_message = _encode_eip712(primitive=typed_data)
     signed_message = Account.sign_message(encoded_message, private_key=PRIVATE_KEY)
     permit2_signature = signed_message.signature
     

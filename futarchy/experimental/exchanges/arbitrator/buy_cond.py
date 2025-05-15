@@ -431,7 +431,12 @@ def buy_gno_yes_and_no_amounts_with_sdai(amount, *, broadcast=False):
 
     print("STEP 3 ----------------")
     liquidate_conditional_sdai_amount_wei = amount_in_no_wei - amount_in_yes_wei
-    liquidate_conditional_sdai_amount = w3.from_wei(liquidate_conditional_sdai_amount_wei, "ether")
+    print("liquidate_conditional_sdai_amount_wei: ", liquidate_conditional_sdai_amount_wei)
+    
+    if liquidate_conditional_sdai_amount_wei > 0:
+        liquidate_conditional_sdai_amount = w3.from_wei(liquidate_conditional_sdai_amount_wei, "ether")
+    else:
+        liquidate_conditional_sdai_amount = -w3.from_wei(-liquidate_conditional_sdai_amount_wei, "ether")
 
     print("Running:\nbuy_gno_yes_and_no_amounts_with_sdai_single({}, {}, {})\n".format(amount, amount_out_limited, liquidate_conditional_sdai_amount))
     result = buy_gno_yes_and_no_amounts_with_sdai_single(
