@@ -48,7 +48,7 @@ def _send_bundle_onchain(bundle):
 def build_conditional_sdai_liquidation_steps(
     liquidate_conditional_sdai_amount,
     handle_liquidate,
-    handle_buy_sdai_yes,
+    handle_liquidate_sdai_yes,
     handle_merge_conditional_sdai,
 ):
     """
@@ -68,7 +68,7 @@ def build_conditional_sdai_liquidation_steps(
         )
         if liq_txs:
             steps += [
-                (liq_txs[0], handle_buy_sdai_yes),
+                (liq_txs[0], handle_liquidate_sdai_yes),
                 (liq_txs[1], handle_merge_conditional_sdai),
             ]
     return steps
@@ -195,15 +195,28 @@ def handle_merge(state, sim):
 
 def handle_liquidate(state, sim):
     data = parse_simulated_swapr_results([sim], label="SwapR Liquidate YES→sDAI (exact-in)", fixed="in")
+    print("handle_liquidate result:", data)
     if data:
+        print("output_amount:", data["output_amount"])
+        print("sdai_out before:", state["sdai_out"])
         state["sdai_out"] += data["output_amount"]
+        print("sdai_out after:", state["sdai_out"])
     return state
 
-def handle_buy_sdai_yes(state, sim):
+def handle_liquidate_sdai_yes(state, sim):
     data = parse_simulated_swapr_results([sim], label="SwapR buy sDAI-YES (exact-out)", fixed="out")
+    if data:
+        print("output_amount:", data["output_amount"])
+        print("sdai_out before:", state["sdai_out"])
+        state["sdai_out"] += data["output_amount"]
+        state["sdai_in"] += data["input_amount"]
+        print("sdai_out after:", state["sdai_out"])
     return state
 
 def handle_merge_conditional_sdai(state, sim):
+    # data = parse_simulated_swapr_results([sim], label="SwapR merge conditional sDAI (exact-in)", fixed="in")
+    # if data:
+    #     state["sdai_out"] += data["output_amount"]
     return state
 
 def handle_balancer(state, sim):
@@ -327,7 +340,7 @@ def sell_gno_yes_and_no_amounts_to_sdai_single(
             steps += build_conditional_sdai_liquidation_steps(
                 liquidate_conditional_sdai_amount,
                 handle_liquidate,
-                handle_buy_sdai_yes,
+                handle_liquidate_sdai_yes,
                 handle_merge_conditional_sdai,
         )
 
@@ -459,7 +472,7 @@ def sell_gno_yes_and_no_amounts_to_sdai(amount, *, broadcast=False):
 
     # Extract amounts from the third simulation result (simulation mode)
     sdai_in = result['sdai_in']
-    sdai_out = result['sdai_out']
+    sdai_out = result['sdai_out'] + amount_out_cond_limited
 
     print("FINAL RESULT")
     print("sDAI in:", sdai_in)
