@@ -421,12 +421,6 @@ def sell_gno_yes_and_no_amounts_to_sdai(amount, *, broadcast=False):
     print("STEP 2 ----------------")
     amount_out_limited = result['gno_out']
     print("amount_out_limited:", amount_out_limited)
-    # amount_out_yes_wei = result['amount_out_yes_wei']
-    # amount_out_no_wei = result['amount_out_no_wei']
-    # if amount_out_yes_wei > amount_out_no_wei:
-    #     amount_out_limited_wei = amount_out_no_wei
-    # else:
-    #     amount_out_limited_wei = amount_out_yes_wei
 
     print("Running:\nsell_gno_yes_and_no_amounts_to_sdai_single({}, {}, None)\n".format(amount, amount_out_limited))
     result = sell_gno_yes_and_no_amounts_to_sdai_single(
@@ -434,17 +428,27 @@ def sell_gno_yes_and_no_amounts_to_sdai(amount, *, broadcast=False):
     )
     print("result:", result)
     # Extract amounts from the second simulation result
-    # amount_in_yes_wei = result['amount_in_yes_wei']
-    # amount_in_no_wei = result['amount_in_no_wei']
-
+    amount_out_yes_wei = result['amount_out_yes_wei']
+    amount_out_no_wei = result['amount_out_no_wei']
+    if amount_out_yes_wei > amount_out_no_wei:
+        amount_out_cond_limited_wei = amount_out_no_wei
+    else:
+        amount_out_cond_limited_wei = amount_out_yes_wei
+    amount_out_cond_limited = w3.from_wei(amount_out_cond_limited_wei, "ether")
+    print("amount_out_cond_limited:", amount_out_cond_limited)
     print("STEP 3 ----------------")
-    liquidate_conditional_sdai_amount_wei = amount_in_no_wei - amount_in_yes_wei
-    liquidate_conditional_sdai_amount = w3.from_wei(liquidate_conditional_sdai_amount_wei, "ether")
+    liquidate_conditional_sdai_amount_wei = amount_out_no_wei - amount_out_yes_wei
+    # liquidate_conditional_sdai_amount = w3.from_wei(liquidate_conditional_sdai_amount_wei, "ether")
+    if liquidate_conditional_sdai_amount_wei > 0:
+        liquidate_conditional_sdai_amount = w3.from_wei(liquidate_conditional_sdai_amount_wei, "ether")
+    else:
+        liquidate_conditional_sdai_amount = -w3.from_wei(-liquidate_conditional_sdai_amount_wei, "ether")
 
     print("Running:\nsell_gno_yes_and_no_amounts_to_sdai_single({}, {}, {})\n".format(amount, amount_out_limited, liquidate_conditional_sdai_amount))
     result = sell_gno_yes_and_no_amounts_to_sdai_single(
         amount,
         amount_out_limited,
+        amount_out_cond_limited,
         liquidate_conditional_sdai_amount,
         broadcast=broadcast,
     )

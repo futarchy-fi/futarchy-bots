@@ -46,6 +46,12 @@ ALLOWANCES: list[tuple[str, str, int]] = [
     ("0xBA345931638963C60Df3aba8D2f07E14334B81ed",  # sDAI-NO
      "0xfFB643E73f280B97809A8b41f7232AB401a04ee1",
      MAX_UINT256),
+    ("0x4daC7974823a41407e9b8D041585158C09433322",  # GNO-YES
+     "0xfFB643E73f280B97809A8b41f7232AB401a04ee1",
+     MAX_UINT256),
+    ("0xD0a8A12DB9c2764e8087e5D4Bf42e9c7a074d335",  # GNO-NO
+     "0xfFB643E73f280B97809A8b41f7232AB401a04ee1",
+     MAX_UINT256),
 
     # Futarchy router – splitting collateral and later merging positions      #
     ("0xaf204776c7245bF4147c2612BF6e5972Ee483701",  # sDAI (collateral)
